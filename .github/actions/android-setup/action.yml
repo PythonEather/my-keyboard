@@ -48,11 +48,25 @@ runs:
           chmod +x "$SDKMANAGER"
         fi
 
-        yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358" || \
-          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" "ndk;28.2.13676358"
+        accept_and_run() {
+          set +o pipefail
+          (while true; do printf 'y\n'; sleep 0.2 2>/dev/null || true; done) | "$SDKMANAGER" --sdk_root="$SDK_ROOT" "$@" 2>/dev/null || true
+          set -o pipefail
+        }
+
+        accept_and_run --licenses
+        if [ ! -d "$SDK_ROOT/ndk/28.2.13676358" ]; then
+          accept_and_run "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
+        fi
+
+        if [ ! -d "$SDK_ROOT/ndk/28.2.13676358" ]; then
+          echo "::error::NDK 28.2.13676358 was not installed in $SDK_ROOT/ndk"
+          exit 1
+        fi
 
         echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
         echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+        echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
         echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
 
     - name: Make gradlew executable
