@@ -179,13 +179,6 @@ sealed interface OverlayItem {
         override val alpha: Float, override val rotation: Float
     ) : OverlayItem
 
-    /** GLSL (OpenGL ES 2.0/3.0, Android 8+): рисует отдельный поток в TextureView. w и h 0 — вся область рисования. */
-    data class Gl(
-        val x: Float, val y: Float, val w: Float, val h: Float, val frag: String, val vert: String,
-        val uniforms: Map<String, Any?>, val mesh: GlMesh?, val scale: Float, val fps: Int,
-        val depth: Boolean, val clear: Color, override val alpha: Float, override val rotation: Float
-    ) : OverlayItem
-
     companion object {
         private fun f(o: Map<*, *>, k: String, def: Float) = (o[k] as? Number)?.toFloat()?.takeIf { !it.isNaN() } ?: def
         private fun color(o: Map<*, *>, k: String, def: Color) =
@@ -235,17 +228,6 @@ sealed interface OverlayItem {
                     val uniforms = (o["uniforms"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
                     Shader(x, y, f(o, "w", 0f), f(o, "h", 0f), prog, uniforms, alpha, rot)
                 }
-                "gl" -> {
-                    val frag = o["frag"]?.toString().orEmpty()
-                    if (frag.isBlank() || frag.length > GlSupport.MAX_SRC) return null
-                    val vert = o["vert"]?.toString().orEmpty().take(GlSupport.MAX_SRC)
-                    val uniforms = (o["uniforms"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
-                    Gl(
-                        x, y, f(o, "w", 0f), f(o, "h", 0f), frag, vert, uniforms, GlMesh.parse(o["mesh"]),
-                        f(o, "scale", 1f).coerceIn(0.1f, 1f), f(o, "fps", 30f).toInt().coerceIn(1, 60),
-                        o["depth"] == true, color(o, "clear", Color.Transparent), alpha, rot
-                    )
-                }
                 else -> null
             }
         }
@@ -283,7 +265,6 @@ internal fun BoxScope.ScriptOverlayLayer() {
             }
         }
     } else Modifier
-    GlItems(items)
     Canvas(Modifier.matchParentSize().then(touch)) { drawOverlayItems(items, measurer, path) }
     // выход всегда есть: клавиши под слоем мода не нажимаются, а мод может и не убрать перехват сам
     if (capture) {
@@ -303,7 +284,6 @@ internal fun BoxScope.ScriptBackgroundLayer() {
     if (items.isEmpty()) return
     val measurer = rememberTextMeasurer()
     val path = remember { Path() }
-    GlItems(items)
     Canvas(Modifier.matchParentSize()) { drawOverlayItems(items, measurer, path) }
 }
 
@@ -364,8 +344,6 @@ internal fun DrawScope.drawOverlayItems(items: List<OverlayItem>, measurer: Text
                     }
                 }
                 is OverlayItem.Shader -> withItem(it, Offset((it.x + it.w / 2f) * d, (it.y + it.h / 2f) * d)) { drawShaderItem(it) }
-                // GL рисует собственный TextureView (см. GlItems), на холсте ему делать нечего
-                is OverlayItem.Gl -> Unit
                 is OverlayItem.Picture -> {
                     val tl = Offset(it.x * d, it.y * d)
                     val w = (it.w * d).roundToInt()

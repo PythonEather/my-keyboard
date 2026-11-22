@@ -401,31 +401,17 @@ object ScriptHost {
         val ctx = appContext ?: return
         if (!shown) ModFx.clearPointers()
         val usable = shown && !privateMode
-        val nativeTilt = ModFx.usesTilt() || ModFx.shaderItems || ModFx.glItems || ModFx.post != null
+        val nativeTilt = ModFx.usesTilt() || ModFx.shaderItems || ModFx.post != null
         ModSensors.sync(ctx, shown && nativeTilt || usable && listens("tilt"), usable && listens("gyro"))
         ModAudio.sync(ctx, usable && !voiceBusy && mods.values.any { it.audio && it.has("microphone") })
         ModFx.usesPointer(!privateMode && listens("pointer"))
     }
 
-    private val glWatched = HashSet<String>()
-
-    /** Шейдер собирается в потоке GL, уже после kb.overlay: через секунду смотрим, не было ли ошибки, и пишем её в журнал мода. */
-    private fun watchGl(pluginId: String, frag: String) {
-        if (glWatched.size > 64) glWatched.clear()
-        if (!glWatched.add(pluginId + "/" + frag.hashCode())) return
-        io.launch {
-            kotlinx.coroutines.delay(1200)
-            val err = GlSupport.error(frag) ?: return@launch
-            withContext(Dispatchers.Main) { log(pluginId, "✕ gl: $err") }
-        }
-    }
-
     private fun parseItems(m: Mod, raw: Any?): List<OverlayItem> {
         val list = raw as? List<*> ?: listOfNotNull(raw)
         return list.take(4000).mapNotNull { v ->
-            OverlayItem.parse(v)?.also { if (it is OverlayItem.Gl) watchGl(m.plugin.id, it.frag) } ?: null.also {
+            OverlayItem.parse(v) ?: null.also {
                 val o = v as? Map<*, *>
-                if (o?.get("type") == "gl") log(m.plugin.id, "✕ gl: " + tr("нужен frag — текст фрагментного шейдера"))
                 if (o?.get("type") == "shader") {
                     val src = o["src"]?.toString().orEmpty()
                     log(m.plugin.id, "✕ shader: " + (ModShaders.error(src) ?: tr("нужен Android 13 или новее")))
@@ -468,10 +454,8 @@ object ScriptHost {
         val back = mods.values.flatMap { it.background }
         if (back.isNotEmpty() || backgroundItems.isNotEmpty()) backgroundItems = back
         val shaders = items.any { it is OverlayItem.Shader } || back.any { it is OverlayItem.Shader }
-        val gl = items.any { it is OverlayItem.Gl } || back.any { it is OverlayItem.Gl }
-        if (shaders != ModFx.shaderItems || gl != ModFx.glItems) {
+        if (shaders != ModFx.shaderItems) {
             ModFx.shaderItems = shaders
-            ModFx.glItems = gl
             syncDevices()
         }
     }
@@ -1037,11 +1021,9 @@ object ScriptHost {
             true
         }
         def(kb, "shaderError") { a -> ModShaders.error(str(a, 0)) }
-        def(kb, "glError") { a -> GlSupport.error(str(a, 0)) }
         def(kb, "supports") { a ->
             when (str(a, 0)) {
                 "shader", "postEffect" -> ModShaders.supported
-                "gl" -> true
                 "labelBlur" -> android.os.Build.VERSION.SDK_INT >= 31
                 "particles", "keyEffects", "pointer" -> true
                 "sensors" -> ModSensors.available(ctx)
@@ -1192,34 +1174,10 @@ object ScriptHost {
 
         // --- настройки клавиатуры
         val settings = linkedMapOf<String, Any?>()
-        def(settings, "get") { a ->
-            val k = str(a, 0)
-            if (k in SecretBox.SECRET_PREFS) null else KeyboardPrefs.prefs(ctx).all[k]
-        }
+        def(settings, "get") { a -> KeyboardPrefs.prefs(ctx).all[str(a, 0)] }
         def(settings, "set") { a ->
-            val k = str(a, 0)
             val v = fromJs(a.getOrNull(1)) ?: return@def false
-            if (k in SecretBox.SECRET_PREFS) throw IllegalStateException("settings: ключи API недоступны модам")
-            // с разрешением settings — любая настройка; без него — только известные ключи из KEY_TYPES
-            if (m.has("settings") && k !in KeyboardPrefs.KEY_TYPES) KeyboardPrefs.setAnyPref(ctx, k, v)
-            else KeyboardPrefs.applyPluginSettings(ctx, mapOf(k to v)) > 0
-        }
-        // сразу несколько настроек одним изменением: клавиатура перерисуется один раз
-        def(settings, "setMany") { a ->
-            var n = 0
-            val known = HashMap<String, Any>()
-            for ((k, v) in opts(a, 0)) {
-                if (v == null || k in SecretBox.SECRET_PREFS) continue
-                if (m.has("settings") && k !in KeyboardPrefs.KEY_TYPES) { if (KeyboardPrefs.setAnyPref(ctx, k, v)) n++ }
-                else known[k] = v
-            }
-            if (known.isNotEmpty()) n += KeyboardPrefs.applyPluginSettings(ctx, known)
-            n
-        }
-        // все настройки целиком (без ключей API)
-        def(settings, "all") { _ ->
-            need(m, "settings")
-            KeyboardPrefs.prefs(ctx).all.filterKeys { it !in SecretBox.SECRET_PREFS }
+            KeyboardPrefs.applyPluginSettings(ctx, mapOf(str(a, 0) to v)) > 0
         }
         kb["settings"] = settings
 
@@ -1229,9 +1187,8 @@ object ScriptHost {
             val o = opts(a, 0)
             val cb = a.getOrNull(1).scriptFunction()
             val url = o["url"]?.toString() ?: throw IllegalArgumentException("http: нужно url")
-            val local = m.has("network_local")
-            require(url.startsWith("https://") || (local && url.startsWith("http://"))) { "http: разрешены только https-адреса" }
-            require(local || !isPrivateHost(url)) { "http: адреса домашней сети и самого телефона недоступны" }
+            require(url.startsWith("https://")) { "http: разрешены только https-адреса" }
+            require(!isPrivateHost(url)) { "http: адреса домашней сети и самого телефона недоступны" }
             val now = SystemClock.uptimeMillis()
             while (m.httpTimes.isNotEmpty() && now - m.httpTimes.first() > 60_000L) m.httpTimes.removeFirst()
             require(m.httpTimes.size < 60) { "http: не больше 60 запросов в минуту" }
@@ -1476,39 +1433,19 @@ object ScriptHost {
             need(m, "ai")
             val o = opts(a, 0)
             val cb = a.getOrNull(1).scriptFunction()
-            val pro = m.has("ai_pro")
-            // ai_pro: свой системный промпт и диалог messages: [{ role: "user"|"assistant", content }]
-            val system = if (pro) o["system"]?.toString()?.take(16_000)?.takeIf { it.isNotBlank() } else null
-            val turns = if (pro) (o["messages"] as? List<*>).orEmpty().takeLast(40).mapNotNull { t ->
-                val item = t as? Map<*, *> ?: return@mapNotNull null
-                val role = item["role"]?.toString()?.takeIf { it == "assistant" || it == "system" } ?: "user"
-                val content = item["content"]?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                role to content
-            } else emptyList()
-            val promptText = o["prompt"]?.toString()
-            if (promptText == null && turns.isEmpty()) throw IllegalArgumentException("ai: нужно prompt")
-            val limit = if (pro) 60 else 10
+            val promptText = o["prompt"]?.toString() ?: throw IllegalArgumentException("ai: нужно prompt")
             val now = SystemClock.uptimeMillis()
             while (m.aiTimes.isNotEmpty() && now - m.aiTimes.first() > 60_000L) m.aiTimes.removeFirst()
-            require(m.aiTimes.size < limit) { "ai: не больше $limit запросов в минуту" }
+            require(m.aiTimes.size < 10) { "ai: не больше 10 запросов в минуту" }
             m.aiTimes.addLast(now)
             val st = KeyboardPrefs.current(ctx)
             val keys = AiKeys.of(st)
             val lang = (b()?.scriptLanguage() ?: "en").substringBefore('-')
             io.launch {
-                val r: Result<String> = if (system != null || turns.isNotEmpty()) {
-                    val user = buildString {
-                        for ((role, content) in turns) append(role).append(": ").append(content).append("\n\n")
-                        if (!promptText.isNullOrBlank()) append(promptText.take(16_000))
-                        o["text"]?.toString()?.takeIf { it.isNotBlank() }?.let { append("\n\nText:\n").append(it.take(32_000)) }
-                    }.trim()
-                    AiFix.runRaw(ctx, system.orEmpty(), user, keys)
-                } else {
-                    AiFix.run(ctx, o["text"]?.toString().orEmpty().take(8000), keys, lang, AiTask.CUSTOM, promptText.orEmpty().take(4000)).map { it.first }
-                }
+                val r = AiFix.run(ctx, o["text"]?.toString().orEmpty().take(8000), keys, lang, AiTask.CUSTOM, promptText.take(4000))
                 withContext(Dispatchers.Main) {
                     if (cb == null || mods[id] !== m) return@withContext
-                    exec(m, CALL_BUDGET_MS) { m.runtime.call(cb, arrayOf(r.exceptionOrNull()?.message, r.getOrNull())) }
+                    exec(m, CALL_BUDGET_MS) { m.runtime.call(cb, arrayOf(r.exceptionOrNull()?.message, r.getOrNull()?.first)) }
                 }
             }
             Unit
