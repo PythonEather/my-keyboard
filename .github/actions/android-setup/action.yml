@@ -1,5 +1,5 @@
 name: Android setup
-description: JDK 17, Gradle и встроенный шрифт Nunito — общая подготовка для всех сборок
+description: JDK 17, Gradle, Android NDK and bundled Nunito font for all builds
 
 runs:
   using: composite
@@ -16,18 +16,54 @@ runs:
     - name: Set up Android NDK
       shell: bash
       run: |
-        # "yes | sdkmanager" fails under bash's default pipefail (yes gets SIGPIPE), so no pipe is used here.
-        SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+        NDK_VER="28.2.13676358"
+        SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+        echo "Runner image: ${ImageOS:-unknown} ${ImageVersion:-unknown}"
+        echo "SDK folder: $SDK"
+
+        find_sdkmanager() {
+          command -v sdkmanager 2>/dev/null && return 0
+          for p in "$SDK"/cmdline-tools/latest/bin/sdkmanager "$SDK"/cmdline-tools/*/bin/sdkmanager "$SDK"/tools/bin/sdkmanager; do
+            if [ -x "$p" ]; then echo "$p"; return 0; fi
+          done
+          return 1
+        }
+
+        SDKM="$(find_sdkmanager || true)"
+
+        if [ -z "$SDKM" ]; then
+          echo "sdkmanager not found, downloading Android command line tools"
+          if ! mkdir -p "$SDK/cmdline-tools" 2>/dev/null; then
+            SDK="$HOME/android-sdk"
+            mkdir -p "$SDK/cmdline-tools"
+          fi
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/cmdline-tools.zip" \
+            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          rm -rf "$RUNNER_TEMP/cmdline-tools-unzip"
+          unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$RUNNER_TEMP/cmdline-tools-unzip"
+          rm -rf "$SDK/cmdline-tools/latest"
+          mv "$RUNNER_TEMP/cmdline-tools-unzip/cmdline-tools" "$SDK/cmdline-tools/latest"
+          SDKM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+        fi
+
+        echo "Using sdkmanager: $SDKM"
+        export ANDROID_HOME="$SDK"
+        export ANDROID_SDK_ROOT="$SDK"
+        echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+        echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+        # "yes | sdkmanager" fails under bash's default pipefail, so no pipe and no exit on error here.
         set +e
-        sdkmanager --licenses < <(yes) > /dev/null 2>&1
-        sdkmanager "ndk;28.2.13676358" > "$RUNNER_TEMP/sdkmanager.log" 2>&1
+        "$SDKM" --sdk_root="$SDK" --licenses < <(yes) > /dev/null 2>&1
+        "$SDKM" --sdk_root="$SDK" "ndk;$NDK_VER" > "$RUNNER_TEMP/sdkmanager.log" 2>&1
         set -e
-        if [ ! -d "$SDK/ndk/28.2.13676358" ]; then
-          echo "::error::NDK 28.2.13676358 is not installed"
+
+        if [ ! -d "$SDK/ndk/$NDK_VER" ]; then
+          echo "::error::NDK $NDK_VER is not installed"
           tail -n 40 "$RUNNER_TEMP/sdkmanager.log"
           exit 1
         fi
-        echo "NDK ready: $SDK/ndk/28.2.13676358"
+        echo "NDK ready: $SDK/ndk/$NDK_VER"
 
     - name: Make gradlew executable
       shell: bash
