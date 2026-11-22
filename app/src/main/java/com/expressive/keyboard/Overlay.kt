@@ -422,7 +422,8 @@ internal fun ScriptFrameTicker() {
         while (true) {
             val now = withFrameMillis { it }
             val dt = now - last
-            val step = if (costMs > 6f) 32L else 15L
+            // кадр скрипта дорогой: 30 кадров/с, а если очень дорогой — 15, чтобы набор и настройки не стояли
+            val step = if (costMs > 14f) 66L else if (costMs > 6f) 32L else 15L
             if (dt >= step) {
                 last = now
                 val t0 = android.os.SystemClock.uptimeMillis()

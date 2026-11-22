@@ -37,13 +37,28 @@ object SettingsSearch {
         add(SettingsPage.BACKUP, "Экспорт настроек", "Импорт настроек", "Сбросить настройки", "Очистить выученные слова", "Очистить недавние эмодзи")
     }
 
+    private class Entry(val shown: String, val hay: String, val page: SettingsPage)
+
+    private var cacheLang: String? = null
+    private var pageEntries: List<Entry> = emptyList()
+    private var itemEntries: List<Entry> = emptyList()
+
+    /** Переводы и нижний регистр считаются один раз на язык, а не на каждую набранную букву. */
+    private fun ensureCache() {
+        val lang = I18n.lang
+        if (lang == cacheLang) return
+        pageEntries = SettingsPage.entries.filter { it != SettingsPage.HOME && it != SettingsPage.THEME_EDITOR }
+            .map { Entry(tr(it.title), (tr(it.title) + "\u0000" + tr(it.subtitle) + "\u0000" + it.title).lowercase(), it) }
+        itemEntries = index.map { (t, p) -> Entry(tr(t), (tr(t) + "\u0000" + t).lowercase(), p) }
+        cacheLang = lang
+    }
+
     fun find(query: String): List<Pair<String, SettingsPage>> {
         val q = query.trim().lowercase()
         if (q.isEmpty()) return emptyList()
-        val pages = SettingsPage.entries.filter { it != SettingsPage.HOME && it != SettingsPage.THEME_EDITOR }
-            .filter { tr(it.title).lowercase().contains(q) || tr(it.subtitle).lowercase().contains(q) || it.title.lowercase().contains(q) }
-            .map { tr(it.title) to it }
-        val items = index.filter { (t, _) -> tr(t).lowercase().contains(q) || t.lowercase().contains(q) }.map { (t, p) -> tr(t) to p }
+        ensureCache()
+        val pages = pageEntries.filter { it.hay.contains(q) }.map { it.shown to it.page }
+        val items = itemEntries.filter { it.hay.contains(q) }.map { it.shown to it.page }
         return (pages + items).distinct().take(30)
     }
 }

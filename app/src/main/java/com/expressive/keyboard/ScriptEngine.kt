@@ -291,8 +291,10 @@ object ScriptHost {
     }
 
     private fun <T> exec(m: Mod, budgetMs: Long, block: () -> T): Result<T> {
+        // обычный вызов (300 мс) мод может расширить в манифесте: "callBudgetMs"; загрузка (2 с) остаётся как есть
+        val budget = if (budgetMs == CALL_BUDGET_MS) maxOf(budgetMs, m.plugin.callBudgetMs.toLong()) else budgetMs
         return try {
-            Result.success(m.runtime.execute(budgetMs, block))
+            Result.success(m.runtime.execute(budget, block))
         } catch (t: Throwable) {
             log(m.plugin.id, "✕ " + describe(t))
             // мод, который трижды подвесил клавиатуру, больше не получает событий и таймеров

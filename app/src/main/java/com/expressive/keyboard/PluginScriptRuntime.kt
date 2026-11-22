@@ -65,8 +65,16 @@ internal class RhinoPluginRuntime : PluginScriptRuntime {
         }
         is ScriptBinding -> object : BaseFunction(scope, ScriptableObject.getFunctionPrototype(scope)) {
             override fun getFunctionName(): String = value.name
-            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<Any?>): Any? =
-                toJs(cx, value.invoke(args))
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<Any?>): Any? {
+                // Время внутри функции клавиатуры (разбор сетки, сборка слоя) — не время скрипта: оно не должно убивать мод по лимиту
+                val t0 = SystemClock.uptimeMillis()
+                try {
+                    return toJs(cx, value.invoke(args))
+                } finally {
+                    val d = cx.getThreadLocal(deadlineKey) as? Long
+                    if (d != null) cx.putThreadLocal(deadlineKey, d + (SystemClock.uptimeMillis() - t0))
+                }
+            }
         }
         else -> value.toString()
     }

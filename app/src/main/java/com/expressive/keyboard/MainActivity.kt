@@ -457,7 +457,7 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
     var query by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     PillField(query, { query = it }, "Найти настройку: вибрация, шрифт, свайп…", Icons.Rounded.Search, tonal = true)
     if (query.isNotBlank()) {
-        val found = SettingsSearch.find(query)
+        val found = remember(query) { SettingsSearch.find(query) }
         SettingsSection(tr("Найдено: {0}", found.size)) {
             if (found.isEmpty()) GroupItem { Text(tr("Ничего не нашлось"), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             found.forEach { (title, p) ->

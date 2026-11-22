@@ -320,7 +320,9 @@ data class KeyboardPlugin(
     val skinJson: String? = null,
     /** Свои настройки мода (блок "config"). */
     val config: List<ModOption> = emptyList(),
-    val scriptEngine: PluginScriptEngine = PluginScriptEngine.RHINO
+    val scriptEngine: PluginScriptEngine = PluginScriptEngine.RHINO,
+    /** Сколько мс даётся одному вызову скрипта (манифест: "callBudgetMs", 300..2000). */
+    val callBudgetMs: Int = 300
 ) {
     val usesNetwork: Boolean get() = "network" in permissions && (actions.any { it.type == PluginActionType.HTTP } || script != null)
     /** Есть что применить кнопкой «Применить оформление». */
@@ -523,6 +525,7 @@ object PluginParser {
             "quickjs" -> PluginScriptEngine.QUICKJS
             else -> throw IllegalArgumentException("scriptEngine: expected rhino or quickjs")
         }
+        val callBudget = o.optInt("callBudgetMs", 300).coerceIn(300, 2000)
         return KeyboardPlugin(
             id = id,
             name = name.take(40),
@@ -542,6 +545,7 @@ object PluginParser {
             variants = variants,
             script = script,
             scriptEngine = scriptEngine,
+            callBudgetMs = callBudget,
             files = files,
             icons = icons,
             languages = languages,
