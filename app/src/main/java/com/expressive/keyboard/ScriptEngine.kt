@@ -401,17 +401,31 @@ object ScriptHost {
         val ctx = appContext ?: return
         if (!shown) ModFx.clearPointers()
         val usable = shown && !privateMode
-        val nativeTilt = ModFx.usesTilt() || ModFx.shaderItems || ModFx.post != null
+        val nativeTilt = ModFx.usesTilt() || ModFx.shaderItems || ModFx.glItems || ModFx.post != null
         ModSensors.sync(ctx, shown && nativeTilt || usable && listens("tilt"), usable && listens("gyro"))
         ModAudio.sync(ctx, usable && !voiceBusy && mods.values.any { it.audio && it.has("microphone") })
         ModFx.usesPointer(!privateMode && listens("pointer"))
     }
 
+    private val glWatched = HashSet<String>()
+
+    /** Шейдер собирается в потоке GL, уже после kb.overlay: через секунду смотрим, не было ли ошибки, и пишем её в журнал мода. */
+    private fun watchGl(pluginId: String, frag: String) {
+        if (glWatched.size > 64) glWatched.clear()
+        if (!glWatched.add(pluginId + "/" + frag.hashCode())) return
+        io.launch {
+            kotlinx.coroutines.delay(1200)
+            val err = GlSupport.error(frag) ?: return@launch
+            withContext(Dispatchers.Main) { log(pluginId, "✕ gl: $err") }
+        }
+    }
+
     private fun parseItems(m: Mod, raw: Any?): List<OverlayItem> {
         val list = raw as? List<*> ?: listOfNotNull(raw)
         return list.take(4000).mapNotNull { v ->
-            OverlayItem.parse(v) ?: null.also {
+            OverlayItem.parse(v)?.also { if (it is OverlayItem.Gl) watchGl(m.plugin.id, it.frag) } ?: null.also {
                 val o = v as? Map<*, *>
+                if (o?.get("type") == "gl") log(m.plugin.id, "✕ gl: " + tr("нужен frag — текст фрагментного шейдера"))
                 if (o?.get("type") == "shader") {
                     val src = o["src"]?.toString().orEmpty()
                     log(m.plugin.id, "✕ shader: " + (ModShaders.error(src) ?: tr("нужен Android 13 или новее")))
@@ -454,8 +468,10 @@ object ScriptHost {
         val back = mods.values.flatMap { it.background }
         if (back.isNotEmpty() || backgroundItems.isNotEmpty()) backgroundItems = back
         val shaders = items.any { it is OverlayItem.Shader } || back.any { it is OverlayItem.Shader }
-        if (shaders != ModFx.shaderItems) {
+        val gl = items.any { it is OverlayItem.Gl } || back.any { it is OverlayItem.Gl }
+        if (shaders != ModFx.shaderItems || gl != ModFx.glItems) {
             ModFx.shaderItems = shaders
+            ModFx.glItems = gl
             syncDevices()
         }
     }
@@ -1021,9 +1037,11 @@ object ScriptHost {
             true
         }
         def(kb, "shaderError") { a -> ModShaders.error(str(a, 0)) }
+        def(kb, "glError") { a -> GlSupport.error(str(a, 0)) }
         def(kb, "supports") { a ->
             when (str(a, 0)) {
                 "shader", "postEffect" -> ModShaders.supported
+                "gl" -> true
                 "labelBlur" -> android.os.Build.VERSION.SDK_INT >= 31
                 "particles", "keyEffects", "pointer" -> true
                 "sensors" -> ModSensors.available(ctx)
