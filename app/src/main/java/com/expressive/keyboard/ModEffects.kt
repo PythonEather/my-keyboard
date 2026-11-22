@@ -497,6 +497,8 @@ object ModFx {
     var keyboardFx by mutableStateOf<KeyFx?>(null)
     var post by mutableStateOf<PostEffect?>(null)
     var shaderItems by mutableStateOf(false)
+    /** Есть элементы { type: "gl" }: им нужны касания и наклон, но не покадровые часы (рисует свой поток). */
+    var glItems by mutableStateOf(false)
     var particlesOn by mutableStateOf(false)
         private set
     /** Кто-то хочет знать, где палец: без этого за касаниями слой не следит. */
@@ -533,6 +535,7 @@ object ModFx {
         keyboardFx = null
         post = null
         shaderItems = false
+        glItems = false
         particlesOn = false
         wantsPointer = false
         pointerCount = 0
@@ -569,7 +572,7 @@ object ModFx {
 
     fun usesPointer(scriptWants: Boolean) {
         wantsPointer = scriptWants || systems.values.any { it.cfg.touchForce != 0f || it.cfg.emitOnTouch > 0 } ||
-            post?.program?.uniforms?.containsKey("iTouch") == true || shaderItems
+            post?.program?.uniforms?.containsKey("iTouch") == true || shaderItems || glItems
     }
 
     /** Клавиатуру скрыли: палец, который её коснулся, отпускания уже не пришлёт. */
