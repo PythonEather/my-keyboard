@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
@@ -183,8 +184,13 @@ sealed interface OverlayItem {
     data class Gl(
         val x: Float, val y: Float, val w: Float, val h: Float, val frag: String, val vert: String,
         val uniforms: Map<String, Any?>, val mesh: GlMesh?, val scale: Float, val fps: Int,
-        val depth: Boolean, val clear: Color, override val alpha: Float, override val rotation: Float
-    ) : OverlayItem
+        val depth: Boolean, val clear: Color, override val alpha: Float, override val rotation: Float,
+        /** id слоя: по нему kb.glUniforms(id, {...}) меняет uniform без пересылки всего списка. */
+        val id: String? = null,
+        val pluginId: String = ""
+    ) : OverlayItem {
+        val liveKey: String? get() = id?.let { GlSupport.liveKey(pluginId, it) }
+    }
 
     companion object {
         private fun f(o: Map<*, *>, k: String, def: Float) = (o[k] as? Number)?.toFloat()?.takeIf { !it.isNaN() } ?: def
@@ -243,7 +249,8 @@ sealed interface OverlayItem {
                     Gl(
                         x, y, f(o, "w", 0f), f(o, "h", 0f), frag, vert, uniforms, GlMesh.parse(o["mesh"]),
                         f(o, "scale", 1f).coerceIn(0.1f, 1f), f(o, "fps", 30f).toInt().coerceIn(1, 60),
-                        o["depth"] == true, color(o, "clear", Color.Transparent), alpha, rot
+                        o["depth"] == true, color(o, "clear", Color.Transparent), alpha, rot,
+                        o["id"]?.toString()?.take(64)
                     )
                 }
                 else -> null
@@ -260,12 +267,17 @@ private fun DrawScope.withItem(it: OverlayItem, pivot: Offset, block: DrawScope.
 internal fun BoxScope.ScriptOverlayLayer() {
     val items = ScriptHost.overlayItems
     val capture = ScriptHost.touchCapture
+    // зона перехвата {x, y, w, h} в dp; null — вся клавиатура. Вне зоны касания достаются клавишам.
+    val zone = ScriptHost.touchZone
+    val exit = ScriptHost.touchExit
     ModParticleLayer(overlay = true)
     if (items.isEmpty() && !capture) return
     val measurer = rememberTextMeasurer()
     val path = remember { Path() }
+    val zx = zone?.get(0) ?: 0f
+    val zy = zone?.get(1) ?: 0f
     // мод попросил касания (kb.captureTouches): слой ловит их вместо клавиш — для игр и рисования
-    val touch = if (capture) Modifier.pointerInput(Unit) {
+    val touch = if (capture) Modifier.pointerInput(zone) {
         awaitPointerEventScope {
             while (true) {
                 val ev = awaitPointerEvent()
@@ -277,18 +289,29 @@ internal fun BoxScope.ScriptOverlayLayer() {
                         c.pressed -> "move"
                         else -> continue
                     }
-                    ScriptHost.touch(type, c.position.x / d, c.position.y / d, c.id.value.toInt())
+                    // координаты всегда от угла клавиатуры, даже когда ловит только зона
+                    ScriptHost.touch(type, c.position.x / d + zx, c.position.y / d + zy, c.id.value.toInt())
                     c.consume()
                 }
             }
         }
     } else Modifier
     GlItems(items)
-    Canvas(Modifier.matchParentSize().then(touch)) { drawOverlayItems(items, measurer, path) }
-    // выход всегда есть: клавиши под слоем мода не нажимаются, а мод может и не убрать перехват сам
+    Canvas(Modifier.matchParentSize().then(if (zone == null) touch else Modifier)) { drawOverlayItems(items, measurer, path) }
+    if (capture && zone != null) {
+        Box(Modifier.offset(zone[0].dp, zone[1].dp).size(zone[2].dp, zone[3].dp).then(touch))
+    }
+    // выход всегда есть: клавиши под слоем мода не нажимаются, а мод может и не убрать перехват сам.
+    // Угол выбирает мод (kb.captureTouches(true, { exit })), чтобы ✕ не лежал на его кнопках.
     if (capture) {
+        val corner = when (exit) {
+            "topStart" -> Alignment.TopStart
+            "bottomEnd" -> Alignment.BottomEnd
+            "bottomStart" -> Alignment.BottomStart
+            else -> Alignment.TopEnd
+        }
         Box(
-            Modifier.align(Alignment.TopEnd).padding(6.dp).size(34.dp).clip(CircleShape).background(Color(0x99000000))
+            Modifier.align(corner).padding(6.dp).size(34.dp).clip(CircleShape).background(Color(0x99000000))
                 .clickable { ScriptHost.releaseTouches() },
             contentAlignment = Alignment.Center
         ) { Text("✕", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) }

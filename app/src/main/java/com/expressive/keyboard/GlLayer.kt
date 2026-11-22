@@ -37,12 +37,62 @@ import kotlin.math.max
 // ============================================================================
 
 object GlSupport {
-    /** Сколько GL-слоёв одновременно (каждый — свой поток и контекст). */
-    const val MAX_LAYERS = 2
+    /** Сколько GL-слоёв одновременно в одном списке (kb.overlay / kb.background); каждый — свой поток и контекст. */
+    const val MAX_LAYERS = 4
     const val MAX_SRC = 64_000
     const val TAG = "ModGl"
 
     private val errors = ConcurrentHashMap<Int, String>()
+
+    private const val MAX_MESHES = 12
+
+    /**
+     * Общий кэш сеток: "мод/ключ" -> сетка. Раньше сетка жила только в том рендерере, куда её прислали, и { key } без данных
+     * молча ничего не рисовал, если элемент попадал в другой рендерер. LRU, чтобы память не росла.
+     */
+    private val meshes: MutableMap<String, GlMesh> = java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, GlMesh>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, GlMesh>?): Boolean = size > MAX_MESHES
+        }
+    )
+
+    fun cacheMesh(owner: String, m: GlMesh) {
+        val k = m.key ?: return
+        if (m.reuse) return
+        meshes[owner + "/" + k] = m
+    }
+
+    fun cachedMesh(owner: String, key: String): GlMesh? = meshes[owner + "/" + key]
+
+    /** Значения uniform, присланные через kb.glUniforms: рендерер читает их каждый кадр, список элементов не пересобирается. */
+    private val live = ConcurrentHashMap<String, ConcurrentHashMap<String, FloatArray>>()
+
+    fun liveKey(pluginId: String, id: String): String = pluginId + "/" + id
+
+    fun toFloats(v: Any?): FloatArray? = when (v) {
+        is Number -> floatArrayOf(v.toFloat())
+        is Boolean -> floatArrayOf(if (v) 1f else 0f)
+        is List<*> -> FloatArray(v.size) { j -> (v[j] as? Number)?.toFloat() ?: 0f }
+        is String -> PluginParser.parseColor(v)?.let { c ->
+            floatArrayOf(((c shr 16) and 255) / 255f, ((c shr 8) and 255) / 255f, (c and 255) / 255f, ((c ushr 24) and 255) / 255f)
+        }
+        else -> null
+    }
+
+    fun putUniforms(key: String, patch: Map<String, Any?>) {
+        if (live.size > 64 && !live.containsKey(key)) live.clear()
+        val m = live.getOrPut(key) { ConcurrentHashMap() }
+        for ((k, v) in patch) {
+            val f = toFloats(v)
+            if (f != null) m[k] = f
+        }
+    }
+
+    fun dropLive(key: String) {
+        live.remove(key)
+    }
+
+    fun liveFor(key: String?): Map<String, FloatArray>? = if (key == null) null else live[key]
 
     fun fail(frag: String, message: String) {
         if (errors.size > 32) errors.clear()
@@ -72,6 +122,18 @@ class GlMesh(
     val key: String?,
     val reuse: Boolean
 ) {
+    /** Отпечаток содержимого: одинаковую сетку, присланную заново, рендерер не загружает в видеопамять второй раз. */
+    val sig: Long by lazy {
+        var h = mode * 31L + count
+        for ((k, a) in attribs) {
+            h = h * 1000003L + k.hashCode()
+            h = h * 1000003L + a.size
+            h = h * 1000003L + java.util.Arrays.hashCode(a.data)
+        }
+        indices?.let { h = h * 1000003L + java.util.Arrays.hashCode(it) }
+        h
+    }
+
     companion object {
         private const val MAX_FLOATS = 400_000
         private const val MAX_INDICES = 200_000
@@ -150,6 +212,8 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
     private var meshKey: String? = null
     private var lastBufW = 0
     private var lastBufH = 0
+    private var missingWarned = false
+    private var depthWarned = false
 
     init {
         isDaemon = true
@@ -164,16 +228,7 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
         density = d
         if (prepared?.item === item) return
         val fl = HashMap<String, FloatArray>()
-        for ((k, v) in item.uniforms) {
-            when (v) {
-                is Number -> fl[k] = floatArrayOf(v.toFloat())
-                is Boolean -> fl[k] = floatArrayOf(if (v) 1f else 0f)
-                is List<*> -> fl[k] = FloatArray(v.size) { j -> (v[j] as? Number)?.toFloat() ?: 0f }
-                is String -> PluginParser.parseColor(v)?.let { c ->
-                    fl[k] = floatArrayOf(((c shr 16) and 255) / 255f, ((c shr 8) and 255) / 255f, (c and 255) / 255f, ((c ushr 24) and 255) / 255f)
-                }
-            }
-        }
+        for ((k, v) in item.uniforms) GlSupport.toFloats(v)?.let { fl[k] = it }
         prepared = GlPrepared(item, fl)
     }
 
@@ -416,7 +471,7 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
                 }
                 "iTilt" -> setFloats(un, floatArrayOf(ModSensors.tiltX, ModSensors.tiltY, ModSensors.tiltZ))
                 "iAudio" -> setFloats(un, floatArrayOf(ModAudio.level))
-                else -> p.floats[un.name]?.let { setFloats(un, it) }
+                else -> (GlSupport.liveFor(item.liveKey)?.get(un.name) ?: p.floats[un.name])?.let { setFloats(un, it) }
             }
         }
     }
@@ -445,7 +500,13 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
         GLES20.glDisable(GLES20.GL_BLEND)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or if (useDepth) GLES20.GL_DEPTH_BUFFER_BIT else 0)
 
-        if (ensureProgram(item)) drawMesh(p, w, h, t, frame)
+        if (ensureProgram(item)) {
+            if (item.depth && !depthOk && !depthWarned) {
+                depthWarned = true
+                GlSupport.fail(item.frag, "GL: this device gave no depth buffer, depth: true is ignored")
+            }
+            drawMesh(p, w, h, t, frame)
+        }
 
         if (!EGL14.eglSwapBuffers(display, surface)) {
             val err = EGL14.eglGetError()
@@ -455,12 +516,36 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
     }
 
     private fun drawMesh(p: GlPrepared, w: Int, h: Int, t: Float, frame: Int) {
-        val given = p.item.mesh ?: GlMesh.QUAD
+        val item = p.item
+        val given = item.mesh ?: GlMesh.QUAD
+        val use: GlMesh
         if (given.reuse) {
-            if (meshOwner == null || meshKey != given.key) return
-        } else if (given !== meshOwner) {
-            // новый объект сетки = мод прислал данные заново; чтобы не пересылать каждый кадр, мод шлёт только { key }
-            uploadMesh(given)
+            // { key } без данных: берём сетку из общего кэша, а не только из этого рендерера
+            val k = given.key
+            val cached = if (k != null) GlSupport.cachedMesh(item.pluginId, k) else null
+            use = when {
+                cached != null -> cached
+                meshOwner != null && meshKey == k -> meshOwner!!
+                else -> {
+                    if (!missingWarned) {
+                        missingWarned = true
+                        GlSupport.fail(item.frag, "GL: mesh \"$k\" is not loaded, send it once with its attribs before using { key } alone")
+                    }
+                    return
+                }
+            }
+        } else {
+            if (given.key != null) GlSupport.cacheMesh(item.pluginId, given)
+            use = given
+        }
+        if (use !== meshOwner) {
+            val cur = meshOwner
+            if (cur != null && use.sig == cur.sig && use.key == cur.key && use.count == cur.count) {
+                // та же сетка прислана заново (мод шлёт её при каждом обновлении): буферы на месте, загрузку пропускаем
+                meshOwner = use
+            } else {
+                uploadMesh(use)
+            }
         }
         val m = meshOwner ?: return
         GLES20.glUseProgram(program)

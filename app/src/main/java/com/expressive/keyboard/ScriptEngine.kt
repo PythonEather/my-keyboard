@@ -159,6 +159,11 @@ private class Mod(val plugin: KeyboardPlugin) {
     var nextPlayer = 1
     /** Мод хочет касания по клавиатуре (kb.captureTouches): пока так, печатать нельзя. */
     var touches = false
+    /** Зона перехвата {x, y, w, h} в dp (null — вся клавиатура) и угол кнопки ✕. */
+    var touchZone: FloatArray? = null
+    var touchExit = "topEnd"
+    /** Когда мод последний раз не уложился во время: старые штрафы за медленные вызовы сгорают. */
+    var lastTimeoutAt = 0L
     /** Эффекты клавиш (kb.keyEffects). */
     var keyFx: Map<String, KeyFx> = emptyMap()
     /** Мод слушает микрофон (kb.audio.start). */
@@ -230,6 +235,10 @@ object ScriptHost {
     /** Мод перехватывает касания клавиатуры (kb.captureTouches) — слой мода ловит их вместо клавиш. */
     var touchCapture by mutableStateOf(false)
         private set
+    var touchZone by mutableStateOf<FloatArray?>(null)
+        private set
+    var touchExit by mutableStateOf("topEnd")
+        private set
 
     /** Обёртки на промисах поверх функций с обратным вызовом: kb.fetch(url).then(...). */
     private val PRELUDE = """
@@ -287,11 +296,20 @@ object ScriptHost {
         } catch (t: Throwable) {
             log(m.plugin.id, "✕ " + describe(t))
             // мод, который трижды подвесил клавиатуру, больше не получает событий и таймеров
-            if (t is ScriptTimeout && ++m.timeouts >= 3 && m.handlers.isNotEmpty()) {
-                m.handlers.clear()
-                m.timers.values.forEach(main::removeCallbacks)
-                m.timers.clear()
-                log(m.plugin.id, "⏸ " + tr("мод тормозил клавиатуру и отключён до перезапуска"))
+            if (t is ScriptTimeout) {
+                val now = SystemClock.uptimeMillis()
+                // редкие медленные вызовы не копятся вечно: после минуты без новых штрафы сгорают
+                if (now - m.lastTimeoutAt > 60_000L) m.timeouts = 0
+                m.lastTimeoutAt = now
+                if (++m.timeouts >= 3 && m.handlers.isNotEmpty()) {
+                    m.handlers.clear()
+                    m.timers.values.forEach(main::removeCallbacks)
+                    m.timers.clear()
+                    log(m.plugin.id, "⏸ " + tr("мод тормозил клавиатуру и отключён до перезапуска"))
+                    appContext?.let { c ->
+                        main.post { Toast.makeText(c, "Plugin \"" + m.plugin.id + "\" was too slow and is stopped until restart", Toast.LENGTH_LONG).show() }
+                    }
+                }
             }
             Result.failure(t)
         }
@@ -423,7 +441,15 @@ object ScriptHost {
     private fun parseItems(m: Mod, raw: Any?): List<OverlayItem> {
         val list = raw as? List<*> ?: listOfNotNull(raw)
         return list.take(4000).mapNotNull { v ->
-            OverlayItem.parse(v)?.also { if (it is OverlayItem.Gl) watchGl(m.plugin.id, it.frag) } ?: null.also {
+            OverlayItem.parse(v)?.let { parsed ->
+                if (parsed is OverlayItem.Gl) {
+                    val g = parsed.copy(pluginId = m.plugin.id)
+                    // новый kb.overlay задаёт uniform заново: прежние kb.glUniforms больше не действуют
+                    g.liveKey?.let { k -> GlSupport.dropLive(k) }
+                    watchGl(m.plugin.id, g.frag)
+                    g
+                } else parsed
+            } ?: null.also {
                 val o = v as? Map<*, *>
                 if (o?.get("type") == "gl") log(m.plugin.id, "✕ gl: " + tr("нужен frag — текст фрагментного шейдера"))
                 if (o?.get("type") == "shader") {
@@ -462,11 +488,24 @@ object ScriptHost {
     private fun appInfoOf(ctx: Context, pkg: String): Map<String, Any?> =
         mapOf("package" to pkg, "name" to ModApps.label(ctx, pkg), "color" to ModApps.color(ctx, pkg))
 
+    private val glCapWarned = HashSet<String>()
+
     private fun publishOverlay() {
         val items = mods.values.flatMap { it.overlay }
         if (items.isNotEmpty() || overlayItems.isNotEmpty()) overlayItems = items
         val back = mods.values.flatMap { it.background }
         if (back.isNotEmpty() || backgroundItems.isNotEmpty()) backgroundItems = back
+        for ((label, list) in listOf("overlay" to items, "background" to back)) {
+            var n = 0
+            for (g in list) {
+                if (g is OverlayItem.Gl && ++n > GlSupport.MAX_LAYERS) {
+                    if (glCapWarned.size > 32) glCapWarned.clear()
+                    if (glCapWarned.add(label + "/" + g.pluginId)) {
+                        log(g.pluginId, "✕ gl: only " + GlSupport.MAX_LAYERS + " GL layers are drawn per list (" + label + "), the rest are ignored")
+                    }
+                }
+            }
+        }
         val shaders = items.any { it is OverlayItem.Shader } || back.any { it is OverlayItem.Shader }
         val gl = items.any { it is OverlayItem.Gl } || back.any { it is OverlayItem.Gl }
         if (shaders != ModFx.shaderItems || gl != ModFx.glItems) {
@@ -649,7 +688,11 @@ object ScriptHost {
     }
 
     private fun publishTouches() {
-        touchCapture = mods.values.any { it.touches }
+        val held = mods.values.filter { it.touches }
+        touchCapture = held.isNotEmpty()
+        // если хоть один мод ловит всю клавиатуру, зона не нужна
+        touchZone = if (held.isEmpty() || held.any { it.touchZone == null }) null else held.first().touchZone
+        touchExit = held.firstOrNull()?.touchExit ?: "topEnd"
     }
 
     /** Кнопка ✕ поверх клавиатуры: снять перехват касаний у всех модов (им приходит touch с type "cancel"). */
@@ -1038,6 +1081,14 @@ object ScriptHost {
         }
         def(kb, "shaderError") { a -> ModShaders.error(str(a, 0)) }
         def(kb, "glError") { a -> GlSupport.error(str(a, 0)) }
+        // меняет uniform GL-слоя с этим id (поле id в элементе type: "gl") без пересылки списка: рендерер подхватит значения на следующем кадре
+        def(kb, "glUniforms") { a ->
+            val gid = str(a, 0)
+            val patch = fromJs(a.getOrNull(1)) as? Map<*, *>
+            if (gid.isEmpty() || patch == null) return@def false
+            GlSupport.putUniforms(GlSupport.liveKey(id, gid), patch.entries.associate { it.key.toString() to it.value })
+            true
+        }
         def(kb, "supports") { a ->
             when (str(a, 0)) {
                 "shader", "postEffect" -> ModShaders.supported
@@ -1353,6 +1404,13 @@ object ScriptHost {
         // --- касания клавиатуры: игры и рисование поверх клавиш (пока включено, клавиши не нажимаются)
         def(kb, "captureTouches") { a ->
             m.touches = a.getOrNull(0).let { it == null || it is Undefined || Rhino.toBoolean(it) }
+            // kb.captureTouches(true, { zone: {x, y, w, h}, exit: "topEnd" | "topStart" | "bottomEnd" | "bottomStart" })
+            val o = opts(a, 1)
+            m.touchZone = (o["zone"] as? Map<*, *>)?.let { z ->
+                fun n(k: String) = (z[k] as? Number)?.toFloat() ?: 0f
+                if (n("w") > 0f && n("h") > 0f) floatArrayOf(n("x"), n("y"), n("w"), n("h")) else null
+            }
+            m.touchExit = (o["exit"]?.toString() ?: "topEnd").takeIf { it in setOf("topEnd", "topStart", "bottomEnd", "bottomStart") } ?: "topEnd"
             publishTouches()
             Unit
         }
