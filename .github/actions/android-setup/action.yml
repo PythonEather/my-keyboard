@@ -15,7 +15,45 @@ runs:
 
     - name: Set up Android NDK
       shell: bash
-      run: sdkmanager "ndk;28.2.13676358"
+      run: |
+        set -e
+        SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+        mkdir -p "$SDK_ROOT"
+
+        SDKMANAGER=""
+        if command -v sdkmanager >/dev/null 2>&1; then
+          SDKMANAGER="$(command -v sdkmanager)"
+        else
+          for candidate in \
+            "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "$SDK_ROOT/cmdline-tools/bin/sdkmanager" \
+            "$SDK_ROOT/tools/bin/sdkmanager"; do
+            if [ -x "$candidate" ]; then
+              SDKMANAGER="$candidate"
+              break
+            fi
+          done
+        fi
+
+        if [ -z "$SDKMANAGER" ]; then
+          TOOLS_ZIP="/tmp/commandlinetools-linux.zip"
+          curl -fsSL --retry 3 -o "$TOOLS_ZIP" \
+            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          mkdir -p "$SDK_ROOT/cmdline-tools/tmp"
+          unzip -q "$TOOLS_ZIP" -d "$SDK_ROOT/cmdline-tools/tmp"
+          rm -rf "$SDK_ROOT/cmdline-tools/latest"
+          mv "$SDK_ROOT/cmdline-tools/tmp/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          rm -rf "$SDK_ROOT/cmdline-tools/tmp" "$TOOLS_ZIP"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          chmod +x "$SDKMANAGER"
+        fi
+
+        yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358" || \
+          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" "ndk;28.2.13676358"
+
+        echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+        echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+        echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
 
     - name: Make gradlew executable
       shell: bash
