@@ -16,58 +16,18 @@ runs:
     - name: Set up Android NDK
       shell: bash
       run: |
+        # "yes | sdkmanager" fails under bash's default pipefail (yes gets SIGPIPE), so no pipe is used here.
+        SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+        set +e
+        sdkmanager --licenses < <(yes) > /dev/null 2>&1
+        sdkmanager "ndk;28.2.13676358" > "$RUNNER_TEMP/sdkmanager.log" 2>&1
         set -e
-        SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-        mkdir -p "$SDK_ROOT"
-
-        SDKMANAGER=""
-        if command -v sdkmanager >/dev/null 2>&1; then
-          SDKMANAGER="$(command -v sdkmanager)"
-        else
-          for candidate in \
-            "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
-            "$SDK_ROOT/cmdline-tools/bin/sdkmanager" \
-            "$SDK_ROOT/tools/bin/sdkmanager"; do
-            if [ -x "$candidate" ]; then
-              SDKMANAGER="$candidate"
-              break
-            fi
-          done
-        fi
-
-        if [ -z "$SDKMANAGER" ]; then
-          TOOLS_ZIP="/tmp/commandlinetools-linux.zip"
-          curl -fsSL --retry 3 -o "$TOOLS_ZIP" \
-            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-          mkdir -p "$SDK_ROOT/cmdline-tools/tmp"
-          unzip -q "$TOOLS_ZIP" -d "$SDK_ROOT/cmdline-tools/tmp"
-          rm -rf "$SDK_ROOT/cmdline-tools/latest"
-          mv "$SDK_ROOT/cmdline-tools/tmp/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
-          rm -rf "$SDK_ROOT/cmdline-tools/tmp" "$TOOLS_ZIP"
-          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          chmod +x "$SDKMANAGER"
-        fi
-
-        accept_and_run() {
-          set +o pipefail
-          (while true; do printf 'y\n'; sleep 0.2 2>/dev/null || true; done) | "$SDKMANAGER" --sdk_root="$SDK_ROOT" "$@" 2>/dev/null || true
-          set -o pipefail
-        }
-
-        accept_and_run --licenses
-        if [ ! -d "$SDK_ROOT/ndk/28.2.13676358" ]; then
-          accept_and_run "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
-        fi
-
-        if [ ! -d "$SDK_ROOT/ndk/28.2.13676358" ]; then
-          echo "::error::NDK 28.2.13676358 was not installed in $SDK_ROOT/ndk"
+        if [ ! -d "$SDK/ndk/28.2.13676358" ]; then
+          echo "::error::NDK 28.2.13676358 is not installed"
+          tail -n 40 "$RUNNER_TEMP/sdkmanager.log"
           exit 1
         fi
-
-        echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
-        echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-        echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
-        echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+        echo "NDK ready: $SDK/ndk/28.2.13676358"
 
     - name: Make gradlew executable
       shell: bash
