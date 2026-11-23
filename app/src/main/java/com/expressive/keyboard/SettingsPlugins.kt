@@ -354,14 +354,46 @@ internal fun PluginCard(p: KeyboardPlugin, expanded: Boolean, onExpand: () -> Un
                         )
                     }
                     if (p.script != null) {
-                        val log = ScriptHost.logs[p.id].orEmpty()
+                        val lines = ScriptHost.logs[p.id].orEmpty()
+                        var minLevel by remember(p.id) { mutableIntStateOf(0) }
+                        var showMore by remember(p.id) { mutableStateOf(false) }
+                        var refresh by remember(p.id) { mutableIntStateOf(0) }
+                        val stamp = remember { java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US) }
+                        val diag = remember(p.id, lines.size, refresh, enabled) { ScriptHost.diagnostics(p.id) }
+                        val mono = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                        val box = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.surfaceContainerHighest).padding(10.dp)
                         Text(tr("Журнал скрипта"), style = MaterialTheme.typography.labelLarge, color = cs.primary)
-                        Text(
-                            if (log.isEmpty()) tr(if (enabled) "Пусто" else "Мод выключен") else log.takeLast(12).joinToString("\n"),
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = cs.onSurfaceVariant,
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.surfaceContainerHighest).padding(10.dp)
-                        )
+                        if (diag != null) Text(diag, style = mono, color = cs.onSurfaceVariant, modifier = box)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            for ((lv, name) in listOf(0 to "Все записи", 2 to "Предупреждения", 3 to "Ошибки")) {
+                                FilterChip(selected = minLevel == lv, onClick = { minLevel = lv }, label = { Text(trl(name)) })
+                            }
+                        }
+                        val shown = lines.filter { it.level >= minLevel }.takeLast(if (showMore) 150 else 14)
+                        val palette = listOf(cs.outline, cs.onSurfaceVariant, cs.tertiary, cs.error)
+                        val logText = androidx.compose.ui.text.buildAnnotatedString {
+                            shown.forEachIndexed { i, l ->
+                                if (i > 0) append("\n")
+                                pushStyle(androidx.compose.ui.text.SpanStyle(color = palette[l.level.coerceIn(0, 3)]))
+                                append(stamp.format(java.util.Date(l.at)) + "  " + l.text)
+                                pop()
+                            }
+                        }
+                        if (shown.isEmpty()) {
+                            Text(tr(if (enabled) "Пусто" else "Мод выключен"), style = mono, color = cs.onSurfaceVariant, modifier = box)
+                        } else {
+                            Text(logText, style = mono, modifier = box)
+                        }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = { refresh++ }) { Text(trl("Обновить сводку")) }
+                            TextButton(onClick = { showMore = !showMore }) { Text(trl(if (showMore) "Показать меньше" else "Показать больше")) }
+                            TextButton(onClick = {
+                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                cm.setPrimaryClip(android.content.ClipData.newPlainText("script log", ScriptHost.exportLog(p.id)))
+                                Toast.makeText(context, trl("Журнал скопирован"), Toast.LENGTH_SHORT).show()
+                            }) { Text(trl("Копировать журнал")) }
+                            TextButton(onClick = { ScriptHost.clearLog(p.id) }) { Text(trl("Очистить журнал")) }
+                        }
                     }
                     if (p.shortcuts.isNotEmpty()) {
                         Text(tr("Сокращения (по пробелу)"), style = MaterialTheme.typography.labelLarge, color = cs.primary)

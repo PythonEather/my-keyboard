@@ -20,6 +20,11 @@ jobs:
       - name: Android setup
         uses: ./.github/actions/android-setup
 
+      - name: Use the fixed debug signing key (APKs update in place)
+        run: |
+          mkdir -p ~/.android
+          cp signing/ci-debug.keystore ~/.android/debug.keystore
+
       - name: Build Release APK (fast, recommended)
         continue-on-error: true
         run: ./gradlew assembleRelease --stacktrace

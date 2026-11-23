@@ -130,6 +130,20 @@ sealed interface UiNode {
 @Immutable
 data class GridItem(val text: String, val icon: String, val value: Any?)
 
+/** Строка журнала мода: время, уровень (0 debug, 1 info, 2 warn, 3 error) и текст. */
+class ScriptLogLine(val at: Long, val level: Int, val text: String)
+
+/** Счётчики вызовов скрипта для диагностики в карточке мода. */
+internal class ScriptStats {
+    var calls = 0L
+    var totalMs = 0L
+    var maxMs = 0L
+    var slowest = ""
+    var slow = 0L
+    var timeouts = 0L
+    var errors = 0L
+}
+
 private class Mod(val plugin: KeyboardPlugin) {
     lateinit var runtime: PluginScriptRuntime
     val handlers = HashMap<String, MutableList<PluginScriptFunction>>()
@@ -148,6 +162,8 @@ private class Mod(val plugin: KeyboardPlugin) {
     val layouts = HashMap<String, List<KeyRow>>()
     /** Сколько раз мод не уложился во время: после трёх раз его обработчики отключаются до перезагрузки. */
     var timeouts = 0
+    val stats = ScriptStats()
+    var lastSlowLogAt = 0L
     /** Время последних запросов kb.http — не больше 20 в минуту. */
     val httpTimes = ArrayDeque<Long>()
     /** Оформление, заданное на лету (kb.setSkin). */
@@ -187,7 +203,7 @@ object ScriptHost {
     var renderTick by mutableIntStateOf(0)
         private set
     /** Журнал скриптов: console.log, ошибки и время работы. */
-    val logs = mutableStateMapOf<String, List<String>>()
+    val logs = mutableStateMapOf<String, List<ScriptLogLine>>()
     /** Всё, что моды рисуют поверх клавиатуры. */
     var overlayItems by mutableStateOf<List<OverlayItem>>(emptyList())
         private set
@@ -279,26 +295,112 @@ object ScriptHost {
         "tilt" to "sensors", "gyro" to "sensors", "audio" to "microphone", "app" to "app_info"
     )
 
-    fun log(pluginId: String, line: String) {
-        val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
-        logs[pluginId] = ((logs[pluginId] ?: emptyList()) + "$t  $line").takeLast(80)
+    private const val MAX_LOG_LINES = 300
+    private const val MAX_LOG_PER_SECOND = 60
+    private const val SLOW_CALL_MS = 120L
+    private val logRate = HashMap<String, LongArray>()
+
+    fun log(pluginId: String, line: String) =
+        logAt(pluginId, if (line.startsWith("✕")) 3 else if (line.startsWith("⏸")) 2 else 1, line)
+
+    /** level: 0 debug, 1 info, 2 warn, 3 error. Ошибки пишутся всегда, остальное — не больше 60 строк в секунду на мод. */
+    fun logAt(pluginId: String, level: Int, text: String) {
+        val now = System.currentTimeMillis()
+        val r = logRate.getOrPut(pluginId) { LongArray(3) }
+        if (now - r[0] >= 1000L) {
+            if (r[2] > 0L) appendLog(pluginId, 2, "… " + r[2] + " log lines dropped (limit " + MAX_LOG_PER_SECOND + " per second)", now)
+            r[0] = now
+            r[1] = 0L
+            r[2] = 0L
+        }
+        if (level < 3 && r[1] >= MAX_LOG_PER_SECOND) {
+            r[2]++
+            return
+        }
+        r[1]++
+        appendLog(pluginId, level, text.take(2000), now)
+    }
+
+    private fun appendLog(pluginId: String, level: Int, text: String, at: Long) {
+        logs[pluginId] = ((logs[pluginId] ?: emptyList()) + ScriptLogLine(at, level, text)).takeLast(MAX_LOG_LINES)
+    }
+
+    fun clearLog(pluginId: String) {
+        logs[pluginId] = emptyList()
+    }
+
+    /** Весь журнал мода текстом (кнопка «Копировать журнал»). */
+    fun exportLog(pluginId: String): String {
+        val f = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
+        return logs[pluginId].orEmpty().joinToString("\n") { l ->
+            f.format(java.util.Date(l.at)) + " [" + "DIWE"[l.level.coerceIn(0, 3)] + "] " + l.text
+        }
+    }
+
+    /** Сводка по вызовам мода: движок, лимит, число и время вызовов, медленные, таймауты. */
+    fun diagnostics(pluginId: String): String? {
+        val m = mods[pluginId] ?: return null
+        val s = m.stats
+        val avg = if (s.calls > 0L) s.totalMs.toDouble() / s.calls else 0.0
+        val limit = maxOf(CALL_BUDGET_MS, m.plugin.callBudgetMs.toLong())
+        return "engine: " + m.plugin.scriptEngine.name.lowercase() + "  ·  limit: " + limit + " ms\n" +
+            "calls: " + s.calls + "  ·  avg: " + String.format(java.util.Locale.US, "%.1f", avg) + " ms  ·  max: " + s.maxMs + " ms" +
+            (if (s.slowest.isNotEmpty()) " (" + s.slowest + ")" else "") + "\n" +
+            "slow (>=" + SLOW_CALL_MS + " ms): " + s.slow + "  ·  timeouts: " + s.timeouts + "  ·  errors: " + s.errors + "\n" +
+            "handlers: " + m.handlers.values.sumOf { it.size } + "  ·  timers: " + m.timers.size
+    }
+
+    private fun record(m: Mod, t0: Long, what: String, failed: Boolean) {
+        val ms = SystemClock.uptimeMillis() - t0
+        val s = m.stats
+        s.calls++
+        s.totalMs += ms
+        if (ms > s.maxMs) {
+            s.maxMs = ms
+            s.slowest = what
+        }
+        if (failed) s.errors++
+        if (ms >= SLOW_CALL_MS) {
+            s.slow++
+            // не чаще раза в секунду: медленный кадровый обработчик иначе завалит журнал
+            if (!failed && t0 - m.lastSlowLogAt > 1000L) {
+                m.lastSlowLogAt = t0
+                logAt(m.plugin.id, 2, "slow call: " + ms + " ms" + (if (what.isNotEmpty()) " in " + what else ""))
+            }
+        }
+    }
+
+    /** Текст для журнала: объекты и массивы — как JSON, а не «[object Object]». */
+    private fun logText(v: Any?): String {
+        if (v is Undefined) return "undefined"
+        return when (val x = fromJs(v)) {
+            null -> "null"
+            is Map<*, *> -> runCatching { org.json.JSONObject(x).toString() }.getOrElse { x.toString() }
+            is Collection<*> -> runCatching { org.json.JSONArray(x).toString() }.getOrElse { x.toString() }
+            else -> Rhino.toString(x)
+        }
     }
 
     private fun describe(t: Throwable): String = when (t) {
         is RhinoException -> "${t.details()} (строка ${t.lineNumber()})"
-        is ScriptTimeout -> t.message.orEmpty()
+        is ScriptTimeout -> trl(t.message.orEmpty())
         else -> t.message ?: t.javaClass.simpleName
     }
 
-    private fun <T> exec(m: Mod, budgetMs: Long, block: () -> T): Result<T> {
+    private fun <T> exec(m: Mod, budgetMs: Long, what: String = "", block: () -> T): Result<T> {
         // обычный вызов (300 мс) мод может расширить в манифесте: "callBudgetMs"; загрузка (2 с) остаётся как есть
         val budget = if (budgetMs == CALL_BUDGET_MS) maxOf(budgetMs, m.plugin.callBudgetMs.toLong()) else budgetMs
+        val t0 = SystemClock.uptimeMillis()
         return try {
-            Result.success(m.runtime.execute(budget, block))
+            val r = m.runtime.execute(budget, block)
+            record(m, t0, what, false)
+            Result.success(r)
         } catch (t: Throwable) {
-            log(m.plugin.id, "✕ " + describe(t))
+            record(m, t0, what, true)
+            log(m.plugin.id, "✕ " + describe(t) + (if (what.isNotEmpty()) "  [" + what + "]" else ""))
             // мод, который трижды подвесил клавиатуру, больше не получает событий и таймеров
             if (t is ScriptTimeout) {
+                m.stats.timeouts++
                 val now = SystemClock.uptimeMillis()
                 // редкие медленные вызовы не копятся вечно: после минуты без новых штрафы сгорают
                 if (now - m.lastTimeoutAt > 60_000L) m.timeouts = 0
@@ -369,7 +471,7 @@ object ScriptHost {
                 }
             }.onFailure { log(p.id, "✕ " + describe(it)) }.getOrNull() ?: continue
             m.runtime = runtime
-            exec(m, LOAD_BUDGET_MS) {
+            exec(m, LOAD_BUDGET_MS, "load") {
                 runtime.load(bindings(m), PRELUDE, src, p.id + ".js")
             }.onSuccess {
                 next[p.id] = m
@@ -561,7 +663,7 @@ object ScriptHost {
                 val perm = EVENT_PERMS[event]
                 if (perm != null && (privateMode || !m.has(perm))) continue
                 for (h in hs.toList()) {
-                    exec(m, CALL_BUDGET_MS) {
+                    exec(m, CALL_BUDGET_MS, event) {
                         fromJs(m.runtime.call(h, args, readResult = true))
                     }.onSuccess { out += it }
                 }
@@ -594,20 +696,20 @@ object ScriptHost {
     fun runButton(pluginId: String, id: String) {
         val m = mods[pluginId] ?: return
         val fn = m.buttons[id]?.second ?: return
-        exec(m, CALL_BUDGET_MS) { m.runtime.call(fn, emptyArray()) }
+        exec(m, CALL_BUDGET_MS, "button:" + id) { m.runtime.call(fn, emptyArray()) }
     }
 
     /** Клавиша раскладки с "action": "pluginId/команда". */
     fun runCommand(spec: String): Boolean {
         val m = mods[spec.substringBefore('/')] ?: return false
         val fn = m.commands[spec.substringAfter('/')] ?: return false
-        exec(m, CALL_BUDGET_MS) { m.runtime.call(fn, emptyArray()) }
+        exec(m, CALL_BUDGET_MS, "command") { m.runtime.call(fn, emptyArray()) }
         return true
     }
 
     fun invoke(call: ScriptCall, vararg args: Any?) {
         val m = mods[call.pluginId]?.takeIf { it.runtime === call.runtime } ?: return
-        exec(m, CALL_BUDGET_MS) {
+        exec(m, CALL_BUDGET_MS, "callback") {
             m.runtime.call(call.fn, args)
         }
     }
@@ -615,7 +717,7 @@ object ScriptHost {
     fun render(panel: ScriptPanel): List<UiNode> {
         val m = mods[panel.pluginId] ?: return listOf(UiNode.Error("Плагин выключен"))
         val fn = m.panels[panel.id]?.second ?: return emptyList()
-        return exec(m, CALL_BUDGET_MS) { parseNodes(m, m.runtime.call(fn, emptyArray(), readResult = true)) }
+        return exec(m, CALL_BUDGET_MS, "panel:" + panel.id) { parseNodes(m, m.runtime.call(fn, emptyArray(), readResult = true)) }
             .getOrElse { listOf(UiNode.Error(describe(it))) }
     }
 
@@ -670,7 +772,7 @@ object ScriptHost {
         }
         val m = mods[pluginId] ?: return
         val hs = m.handlers["option"] ?: return
-        for (h in hs.toList()) exec(m, CALL_BUDGET_MS) {
+        for (h in hs.toList()) exec(m, CALL_BUDGET_MS, "option") {
             m.runtime.call(h, arrayOf(mapOf("id" to id, "value" to value)))
         }
         renderTick++
@@ -683,7 +785,7 @@ object ScriptHost {
         for (m in mods.values) {
             if (!m.touches) continue
             val hs = m.handlers["touch"] ?: continue
-            for (h in hs.toList()) exec(m, CALL_BUDGET_MS) {
+            for (h in hs.toList()) exec(m, CALL_BUDGET_MS, "touch") {
                 m.runtime.call(h, arrayOf(mapOf("type" to type, "x" to x, "y" to y, "pointer" to pointer)))
             }
         }
@@ -704,7 +806,7 @@ object ScriptHost {
         publishTouches()
         for (m in held) {
             val hs = m.handlers["touch"] ?: continue
-            for (h in hs.toList()) exec(m, CALL_BUDGET_MS) {
+            for (h in hs.toList()) exec(m, CALL_BUDGET_MS, "touch") {
                 m.runtime.call(h, arrayOf(mapOf("type" to "cancel", "x" to 0, "y" to 0, "pointer" to 0)))
             }
         }
@@ -740,7 +842,7 @@ object ScriptHost {
             for (m in mods.values) {
                 if (m === from) continue
                 val hs = m.handlers["message"] ?: continue
-                for (h in hs.toList()) exec(m, CALL_BUDGET_MS) {
+                for (h in hs.toList()) exec(m, CALL_BUDGET_MS, "message") {
                     m.runtime.call(h, arrayOf(mapOf("from" to from.plugin.id, "name" to name, "data" to data)))
                 }
             }
@@ -1301,12 +1403,22 @@ object ScriptHost {
         }
 
         // --- журнал
-        val logFn: (Array<Any?>) -> Any? = { a -> log(id, a.joinToString(" ") { v -> if (v is Undefined) "undefined" else Rhino.toString(v) }); Unit }
-        def(kb, "log", logFn)
+        // kb.log / warn / error / debug и console.* пишут только в журнал этого мода: отдельное разрешение не нужно
+        fun logFor(level: Int): (Array<Any?>) -> Any? = { a ->
+            logAt(id, level, a.joinToString(" ") { v -> logText(v) })
+            Unit
+        }
+        def(kb, "log", logFor(1))
+        def(kb, "warn", logFor(2))
+        def(kb, "error", logFor(3))
+        def(kb, "debug", logFor(0))
+        def(kb, "logClear") { _ -> clearLog(id); Unit }
         val console = linkedMapOf<String, Any?>()
-        def(console, "log", logFn)
-        def(console, "warn", logFn)
-        def(console, "error", logFn)
+        def(console, "log", logFor(1))
+        def(console, "info", logFor(1))
+        def(console, "debug", logFor(0))
+        def(console, "warn", logFor(2))
+        def(console, "error", logFor(3))
         globals["console"] = console
 
         // --- таймеры
@@ -1325,7 +1437,7 @@ object ScriptHost {
                         return
                     }
                     if (!repeat) m.timers.remove(tid)
-                    exec(m, CALL_BUDGET_MS) { m.runtime.call(fn, emptyArray()) }
+                    exec(m, CALL_BUDGET_MS, "timer") { m.runtime.call(fn, emptyArray()) }
                     if (repeat && m.timers.containsKey(tid)) main.postDelayed(this, delay)
                 }
             }

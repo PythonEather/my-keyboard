@@ -42,7 +42,7 @@ static JSValue string_from_bytes(JSContext *ctx, JNIEnv *env, jbyteArray bytes) 
     return result;
 }
 
-static JSValue dispatch_host(JSContext *ctx, JSValueConst self, int argc, JSValueConst *argv) {
+static JSValue dispatch_host_inner(JSContext *ctx, JSValueConst self, int argc, JSValueConst *argv) {
     (void)self;
     PluginRuntime *plugin = JS_GetContextOpaque(ctx);
     JNIEnv *env = plugin->env;
@@ -67,6 +67,16 @@ static JSValue dispatch_host(JSContext *ctx, JSValueConst self, int argc, JSValu
     if (!response || (*env)->ExceptionCheck(env)) return JS_ThrowInternalError(ctx, "Host call failed");
     JSValue result = string_from_bytes(ctx, env, response);
     (*env)->DeleteLocalRef(env, response);
+    return result;
+}
+
+// Time spent inside the keyboard (parsing a mesh, building an overlay) is not script time. The deadline is pushed back
+// by as long as the host call took, so only the plugin's own running time can trigger the "too long" stop.
+static JSValue dispatch_host(JSContext *ctx, JSValueConst self, int argc, JSValueConst *argv) {
+    PluginRuntime *plugin = JS_GetContextOpaque(ctx);
+    int64_t started = monotonic_ms();
+    JSValue result = dispatch_host_inner(ctx, self, argc, argv);
+    plugin->deadline += monotonic_ms() - started;
     return result;
 }
 
