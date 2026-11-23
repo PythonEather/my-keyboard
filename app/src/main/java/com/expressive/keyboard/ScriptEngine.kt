@@ -256,6 +256,25 @@ object ScriptHost {
     var touchExit by mutableStateOf("topEnd")
         private set
 
+    /**
+     * Свой экран мода (kb.screenOpen): null — обычная клавиатура, "fullscreen" — на весь экран,
+     * "floating" — плавающая панель над приложением. Вид задаёт поле display в манифесте, одновременно открыт один экран.
+     */
+    var screenMode by mutableStateOf<String?>(null)
+        private set
+    /** Полный экран: клавиши остаются внизу (true) или убраны совсем (false). */
+    var screenKeys by mutableStateOf(true)
+        private set
+    /** Панель мода (kb.addPanel), которую показывает экран; для плавающей панели обязательна. */
+    var screenPanel by mutableStateOf<ScriptPanel?>(null)
+        private set
+    /** Размер плавающей панели {ширина, высота} в dp; null — по умолчанию. */
+    var screenSize by mutableStateOf<FloatArray?>(null)
+        private set
+    var screenExit by mutableStateOf("topEnd")
+        private set
+    private var screenOwner: Mod? = null
+
     /** Обёртки на промисах поверх функций с обратным вызовом: kb.fetch(url).then(...). */
     private val PRELUDE = """
         (function () {
@@ -458,6 +477,10 @@ object ScriptHost {
             bridge?.scriptPrompt(false)
         }
         touchCapture = false
+        screenOwner = null
+        screenMode = null
+        screenPanel = null
+        screenSize = null
         ModFx.reset()
         val next = LinkedHashMap<String, Mod>()
         for (p in plugins) {
@@ -809,6 +832,37 @@ object ScriptHost {
             for (h in hs.toList()) exec(m, CALL_BUDGET_MS, "touch") {
                 m.runtime.call(h, arrayOf(mapOf("type" to "cancel", "x" to 0, "y" to 0, "pointer" to 0)))
             }
+        }
+        // ✕ слоя касаний закрывает и экран мода: на полном экране второй кнопки нет
+        closeScreen()
+    }
+
+    private fun openScreen(m: Mod, mode: String, keys: Boolean, panel: ScriptPanel?, size: FloatArray?, exit: String) {
+        // мод могли выключить, пока вызов ждал очереди
+        if (mods[m.plugin.id] !== m) return
+        if (screenOwner != null && screenOwner !== m) closeScreen()
+        screenOwner = m
+        screenKeys = keys
+        screenPanel = panel
+        screenSize = size
+        screenExit = exit
+        screenMode = mode
+        val hs = m.handlers["screen"] ?: return
+        for (h in hs.toList()) exec(m, CALL_BUDGET_MS, "screen") {
+            m.runtime.call(h, arrayOf(mapOf("open" to true, "mode" to mode)))
+        }
+    }
+
+    /** Закрыть экран мода: кнопка ✕, скрытие клавиатуры или экран другого мода. Владелец получает событие "screen" с open: false. */
+    fun closeScreen() {
+        val m = screenOwner ?: return
+        screenOwner = null
+        screenMode = null
+        screenPanel = null
+        screenSize = null
+        val hs = m.handlers["screen"] ?: return
+        for (h in hs.toList()) exec(m, CALL_BUDGET_MS, "screen") {
+            m.runtime.call(h, arrayOf(mapOf("open" to false, "mode" to "")))
         }
     }
 
@@ -1526,6 +1580,30 @@ object ScriptHost {
             }
             m.touchExit = (o["exit"]?.toString() ?: "topEnd").takeIf { it in setOf("topEnd", "topStart", "bottomEnd", "bottomStart") } ?: "topEnd"
             publishTouches()
+            Unit
+        }
+
+        // --- свой экран мода: на весь экран или плавающая панель (что из двух — поле display в манифесте, одно из двух)
+        // kb.screenOpen({ keys: true|false, panel: "id", width: 320, height: 360, exit: "topEnd" }); kb.screenClose()
+        def(kb, "screenOpen") { a ->
+            need(m, "screen")
+            val mode = m.plugin.display
+                ?: throw IllegalStateException("screenOpen needs \"display\": \"fullscreen\" or \"floating\" in the manifest")
+            val o = opts(a, 0)
+            val panel = o["panel"]?.toString()?.let { m.panels[it]?.first }
+            if (mode == "floating" && panel == null) {
+                throw IllegalArgumentException("screenOpen: a floating panel needs panel (an id from kb.addPanel)")
+            }
+            val keys = o["keys"] != false
+            val w = (o["width"] as? Number)?.toFloat()
+            val h = (o["height"] as? Number)?.toFloat()
+            val size = if (w != null && h != null) floatArrayOf(w.coerceIn(160f, 600f), h.coerceIn(120f, 700f)) else null
+            val exit = (o["exit"]?.toString() ?: "topEnd").takeIf { it in setOf("topEnd", "topStart", "bottomEnd", "bottomStart") } ?: "topEnd"
+            main.post { openScreen(m, mode, keys, panel, size, exit) }
+            true
+        }
+        def(kb, "screenClose") { _ ->
+            main.post { if (screenOwner === m) closeScreen() }
             Unit
         }
 

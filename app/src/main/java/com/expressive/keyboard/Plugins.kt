@@ -322,7 +322,9 @@ data class KeyboardPlugin(
     val config: List<ModOption> = emptyList(),
     val scriptEngine: PluginScriptEngine = PluginScriptEngine.RHINO,
     /** Сколько мс даётся одному вызову скрипта (манифест: "callBudgetMs", 300..2000). */
-    val callBudgetMs: Int = 300
+    val callBudgetMs: Int = 300,
+    /** Свой экран мода (манифест: "display"): "fullscreen" — на весь экран, "floating" — плавающая панель. Одно из двух. */
+    val display: String? = null
 ) {
     val usesNetwork: Boolean get() = "network" in permissions && (actions.any { it.type == PluginActionType.HTTP } || script != null)
     /** Есть что применить кнопкой «Применить оформление». */
@@ -354,7 +356,7 @@ object PluginParser {
     )
     val LAYOUT_IDS = setOf("symbols", "symbols2")
     private val LANG_ID = Regex("^[a-z]{2,3}([-_][a-z0-9]{2,8})?$")
-    val PERMISSIONS = setOf("network", "read_text", "clipboard", "launch", "ai", "sensors", "microphone", "app_info")
+    val PERMISSIONS = setOf("network", "read_text", "clipboard", "launch", "ai", "sensors", "microphone", "app_info", "screen")
     val KEYS = setOf(
         "tab", "enter", "left", "right", "up", "down", "home", "end", "select_all", "copy", "cut",
         "paste", "undo", "redo", "delete_word", "escape"
@@ -526,6 +528,8 @@ object PluginParser {
             else -> throw IllegalArgumentException("scriptEngine: expected rhino or quickjs")
         }
         val callBudget = o.optInt("callBudgetMs", 300).coerceIn(300, 2000)
+        val display = o.optString("display", "").trim()
+        require(display.isEmpty() || display == "fullscreen" || display == "floating") { "display: expected fullscreen or floating" }
         return KeyboardPlugin(
             id = id,
             name = name.take(40),
@@ -546,6 +550,7 @@ object PluginParser {
             script = script,
             scriptEngine = scriptEngine,
             callBudgetMs = callBudget,
+            display = display.ifEmpty { null },
             files = files,
             icons = icons,
             languages = languages,

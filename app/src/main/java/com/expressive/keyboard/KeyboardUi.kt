@@ -156,7 +156,9 @@ fun KeyboardRoot(
     onBackground: (Color, Boolean) -> Unit,
     onWindowBlur: (Int, Color, Float) -> Unit = { _, _, _ -> },
     /** Плавающая клавиатура: её границы в окне (только там окно ловит касания); null — обычная, внизу. */
-    onFloatBounds: (android.graphics.Rect?) -> Unit = {}
+    onFloatBounds: (android.graphics.Rect?) -> Unit = {},
+    /** Плавающая панель мода: границы клавиатуры и панели в окне (там окно ловит касания); null — панели нет. */
+    onScreenRects: (android.graphics.Rect?, android.graphics.Rect?) -> Unit = { _, _ -> }
 ) {
     val prefs by KeyboardPrefs.observe()
     val raw = remember(prefs, PowerState.saver) { prefs.forPower(PowerState.saver) }
@@ -174,7 +176,11 @@ fun KeyboardRoot(
     }
     val configuration = LocalConfiguration.current
     val landscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    val floating = raw.floating
+    // экран мода: плавающая панель не сочетается с плавающей клавиатурой, а на весь экран клавиатура не «плавает»
+    val screenMode = ScriptHost.screenMode?.takeUnless { it == "floating" && raw.floating }
+    val fullscreen = screenMode == "fullscreen"
+    val floating = raw.floating && !fullscreen
+    val fill = if (fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
     val settings = remember(raw, skin, landscape, configuration.screenHeightDp) {
         val s0 = skin?.applyColors(raw) ?: raw
         val s = if (landscape) s0.forLandscape(configuration.screenHeightDp) else s0
@@ -202,7 +208,8 @@ fun KeyboardRoot(
             else -> skin?.windowBlur?.let { if (raw.windowBlurDp != 32f) raw.windowBlurDp else it }
         }
         // размытие окна плавающей клавиатуре не подходит: окно во весь экран, размылось бы всё приложение
-        val blurDp = wantBlur?.takeIf { it > 0f && blurSupported && image == null && !floating }
+        // то же с экраном мода: окно во весь экран, размылось бы всё приложение
+        val blurDp = wantBlur?.takeIf { it > 0f && blurSupported && image == null && !floating && screenMode == null }
         // дымка поверх размытия: у темы своя, иначе — полупрозрачный фон клавиатуры
         val blurTint0 = skin?.blurTint ?: palette.background.copy(alpha = if (palette.background.luminance() < 0.5f) 0.62f else 0.55f)
         // прозрачный фон: сквозь клавиатуру видно приложение, остаются только клавиши
@@ -212,7 +219,7 @@ fun KeyboardRoot(
         LaunchedEffect(palette.background, decorated) { onBackground(palette.background, decorated) }
         // без верхней панели скруглять верх фона нечем: первый ряд клавиш стоял бы впритык
         // к вырезу, и углы выглядели обрезанными — делаем верх листа прямым
-        val corner = if (floating) min(skin?.corner ?: 24f, 24f) else if (settings.showHeader) skin?.corner ?: 28f else 0f
+        val corner = if (fullscreen) 0f else if (floating) min(skin?.corner ?: 24f, 24f) else if (settings.showHeader) skin?.corner ?: 28f else 0f
         LaunchedEffect(blurDp, blurTint, corner) {
             onWindowBlur(if (blurDp == null) 0 else with(density) { blurDp.dp.roundToPx() }, blurTint, corner)
         }
@@ -245,9 +252,10 @@ fun KeyboardRoot(
             else systemMinimum + adjustableGap
         }
         CompositionLocalProvider(LocalSkin provides skin, LocalBackdrop provides backdrop) {
+          ScreenFrame(screenMode, ScriptHost.screenPanel, ScriptHost.screenSize, palette, font, corner, onScreenRects) {
           FloatingFrame(floating, settings, safeEdges, palette, corner, onFloatBounds) { keyHeight ->
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = fill,
                 shape = if (floating) RectangleShape else RoundedCornerShape(topStart = corner.dp, topEnd = corner.dp),
                 // при размытии окна фон рисует само окно (дымка поверх размытия)
                 // размытие просили, но система его не даёт — фон «матовый»: почти непрозрачный, а не прозрачный
@@ -255,7 +263,7 @@ fun KeyboardRoot(
                 else palette.background.copy(alpha = palette.background.alpha * if (wantBlur != null && wantBlur > 0f && image == null) max(bgAlpha, 0.92f) else bgAlpha)
             ) {
                 Box(
-                    Modifier.fillMaxWidth().onGloballyPositioned {
+                    fill.onGloballyPositioned {
                         backdrop.coords = it
                         if (it.size != rootSize) rootSize = it.size
                     }
@@ -276,7 +284,7 @@ fun KeyboardRoot(
                         max(max(l, r).toDp(), if (settings.landscape) 20.dp else 0.dp)
                     }
                     Box(
-                        Modifier.fillMaxWidth()
+                        fill
                             // плавающая не стоит у края экрана: отступы под панель навигации и вырез ей не нужны
                             .then(
                                 if (floating) Modifier
@@ -297,6 +305,7 @@ fun KeyboardRoot(
                     AiGlowOverlay(state.aiBusy, state.aiDone, palette, font)
                 }
             }
+          }
           }
         }
     }
@@ -447,6 +456,109 @@ internal fun FloatingFrame(
     }
 }
 
+/**
+ * Плавающая панель мода (display: "floating"): окно клавиатуры во весь экран и прозрачное, клавиатура стоит внизу как обычно,
+ * а панель — карточка, которую таскают за ручку. Касания мимо клавиатуры и карточки уходят приложению
+ * (границы сообщаются сервису). Без панели или в другом режиме клавиатура рисуется как обычно.
+ */
+@Composable
+internal fun ScreenFrame(
+    mode: String?,
+    panel: ScriptPanel?,
+    dims: FloatArray?,
+    palette: KeyPalette,
+    font: FontFamily,
+    cornerDp: Float,
+    onRects: (android.graphics.Rect?, android.graphics.Rect?) -> Unit,
+    content: @Composable () -> Unit
+) {
+    if (mode != "floating" || panel == null) {
+        LaunchedEffect(mode) { onRects(null, null) }
+        content()
+        return
+    }
+    val rects = remember { arrayOfNulls<android.graphics.Rect>(2) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val conf = LocalConfiguration.current
+        val maxW = if (constraints.hasBoundedWidth) constraints.maxWidth.toFloat() else with(density) { conf.screenWidthDp.dp.toPx() }
+        val maxH = if (constraints.hasBoundedHeight) constraints.maxHeight.toFloat() else with(density) { conf.screenHeightDp.dp.toPx() }
+        val cardW = with(density) { (dims?.get(0) ?: 320f).dp.toPx() }.coerceAtMost(maxW * 0.96f)
+        val cardH = with(density) { (dims?.get(1) ?: 340f).dp.toPx() }.coerceAtMost(maxH * 0.7f)
+        var pos by remember(maxW, maxH) { mutableStateOf(Offset((maxW - cardW) / 2f, maxH * 0.12f)) }
+        val shape = RoundedCornerShape(cornerDp.coerceAtLeast(16f).dp)
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().onGloballyPositioned { c ->
+                val b = c.boundsInWindow()
+                rects[0] = android.graphics.Rect(b.left.toInt(), b.top.toInt(), b.right.roundToInt(), b.bottom.roundToInt())
+                onRects(rects[0], rects[1])
+            }
+        ) { content() }
+        Column(
+            Modifier
+                .offset { IntOffset(pos.x.roundToInt(), pos.y.roundToInt()) }
+                .size(with(density) { cardW.toDp() }, with(density) { cardH.toDp() })
+                .onGloballyPositioned { c ->
+                    val b = c.boundsInWindow()
+                    rects[1] = android.graphics.Rect(b.left.toInt(), b.top.toInt(), b.right.roundToInt(), b.bottom.roundToInt())
+                    onRects(rects[0], rects[1])
+                }
+                .shadow(10.dp, shape)
+                .clip(shape)
+                .background(palette.background.copy(alpha = max(palette.background.alpha, 0.96f)))
+        ) {
+            Row(
+                Modifier.fillMaxWidth().height(34.dp)
+                    .pointerInput(maxW, maxH, cardW, cardH) {
+                        detectDragGestures { change, drag ->
+                            change.consume()
+                            pos = Offset(
+                                (pos.x + drag.x).coerceIn(0f, (maxW - cardW).coerceAtLeast(0f)),
+                                (pos.y + drag.y).coerceIn(0f, (maxH - cardH).coerceAtLeast(0f))
+                            )
+                        }
+                    },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    tr(panel.title), Modifier.weight(1f), color = palette.onFunc, fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+                Box(Modifier.size(34.dp).clickable { ScriptHost.closeScreen() }, contentAlignment = Alignment.Center) {
+                    Text("✕", color = palette.onFunc, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            ScriptPanelView(panel, palette, font, Modifier.weight(1f).fillMaxWidth())
+        }
+    }
+}
+
+/** Панель мода на весь экран (display: "fullscreen" и panel в kb.screenOpen): над клавишами, если они есть. */
+@Composable
+internal fun ScreenPanelLayer(keysPx: Int, palette: KeyPalette, font: FontFamily) {
+    val panel = ScriptHost.screenPanel ?: return
+    val bottom = with(LocalDensity.current) { keysPx.toDp() }
+    ScriptPanelView(panel, palette, font, Modifier.fillMaxSize().padding(top = 44.dp, bottom = bottom))
+}
+
+/** ✕ экрана мода: есть всегда, мод его не убирает. Если касания перехвачены, ✕ уже есть у их слоя — он закрывает и экран. */
+@Composable
+internal fun BoxScope.ScreenExitButton() {
+    if (ScriptHost.touchCapture) return
+    val corner = when (ScriptHost.screenExit) {
+        "topStart" -> Alignment.TopStart
+        "bottomEnd" -> Alignment.BottomEnd
+        "bottomStart" -> Alignment.BottomStart
+        else -> Alignment.TopEnd
+    }
+    Box(
+        Modifier.align(corner).padding(6.dp).size(34.dp).clip(CircleShape).background(Color(0x99000000))
+            .clickable { ScriptHost.closeScreen() },
+        contentAlignment = Alignment.Center
+    ) { Text("✕", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+}
+
 @Composable
 internal fun KeyboardScreen(
     state: KeyboardState,
@@ -483,9 +595,13 @@ internal fun KeyboardScreen(
         onDispose { if (KeyboardGeometry.layer === layer) KeyboardGeometry.layer = null }
     }
     val gap = if (settings.landscape) 4.dp else 8.dp
+    // экран мода на весь экран: слой мода занимает окно, клавиши (если нужны) прижаты к низу
+    val fullscreen = ScriptHost.screenMode == "fullscreen"
+    val showKeys = !fullscreen || ScriptHost.screenKeys
+    var keysPx by remember { mutableIntStateOf(0) }
 
     Box(
-        Modifier.fillMaxWidth().onGloballyPositioned { layer.coords = it }
+        (if (fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).onGloballyPositioned { layer.coords = it }
             .then(if (ModFx.wantsPointer) Modifier.modPointerWatch() else Modifier)
     ) {
         // слой мода под клавишами — первым, чтобы клавиши легли поверх
@@ -495,8 +611,9 @@ internal fun KeyboardScreen(
             palette.background,
             settings.cornerRadiusDp
         )
-        Column(
+        if (showKeys) Column(
             modifier = Modifier.fillMaxWidth()
+                .then(if (fullscreen) Modifier.align(Alignment.BottomCenter).onSizeChanged { keysPx = it.height } else Modifier)
                 .then(if (ModFx.layerActive) Modifier.modKeyboardLayer() else Modifier)
                 .padding(horizontal = settings.sidePaddingDp.dp, vertical = gap),
             verticalArrangement = Arrangement.spacedBy(gap)
@@ -549,6 +666,10 @@ internal fun KeyboardScreen(
         }
         GlideTrailLayer(glide, trailColor, settings.glideTrail)
         ScriptOverlayLayer()
+        if (fullscreen) {
+            ScreenPanelLayer(if (showKeys) keysPx else 0, palette, font)
+            ScreenExitButton()
+        }
         PopupLayer(popup, palette, font, spec.decor(settings), settings.animPopup, settings.animSpeed, settings.popupStyle)
         ScriptFrameTicker()
         ModFxTicker()

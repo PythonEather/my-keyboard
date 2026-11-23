@@ -153,7 +153,7 @@ internal fun PluginsPage() {
         r.onSuccess { p ->
             Toast.makeText(context, tr("Плагин «{0}» установлен", tr(p.name)), Toast.LENGTH_SHORT).show()
             expanded = p.id
-            if (p.usesNetwork || p.permissions.any { it in setOf("read_text", "clipboard", "launch", "ai", "sensors", "microphone", "app_info") }) pendingNetwork = p
+            if (p.usesNetwork || p.permissions.any { it in setOf("read_text", "clipboard", "launch", "ai", "sensors", "microphone", "app_info", "screen") }) pendingNetwork = p
         }.onFailure { Toast.makeText(context, tr("Ошибка: {0}", it.message), Toast.LENGTH_LONG).show() }
     }
     val modExampleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/javascript")) { uri: Uri? ->
@@ -261,6 +261,7 @@ internal fun PluginsPage() {
                         if ("sensors" in p.permissions) add("• " + tr("видеть наклон и движение телефона, пока открыта клавиатура"))
                         if ("microphone" in p.permissions) add("• " + tr("слышать громкость и частоты с микрофона, пока открыта клавиатура (сам звук мод не получает)"))
                         if ("app_info" in p.permissions) add("• " + tr("знать, в каком приложении вы печатаете"))
+                        if ("screen" in p.permissions) add("• " + trs("показывать свой экран: на весь экран или плавающей панелью поверх приложения"))
                         if ("network" in p.permissions) add(
                             "• " + tr("выходить в интернет") + p.actions.filter { it.type == PluginActionType.HTTP }
                                 .joinToString("") { "\n   ${tr(it.title)}: ${Uri.parse(it.url).host}" }
@@ -336,6 +337,7 @@ internal fun PluginCard(p: KeyboardPlugin, expanded: Boolean, onExpand: () -> Un
                                     "sensors" -> tr("датчики движения")
                                     "microphone" -> tr("громкость микрофона")
                                     "app_info" -> tr("видит приложение")
+                                    "screen" -> trs("свой экран")
                                     else -> tr("интернет")
                                 }
                             },

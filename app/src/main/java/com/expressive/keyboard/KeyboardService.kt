@@ -523,14 +523,42 @@ class ComposeKeyboardService : InputMethodService(),
      */
     override fun onComputeInsets(outInsets: InputMethodService.Insets) {
         super.onComputeInsets(outInsets)
-        val r = floatRect ?: return
         val h = window?.window?.decorView?.height ?: return
         if (h <= 0) return
-        outInsets.contentTopInsets = h
-        outInsets.visibleTopInsets = h
-        outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_REGION
-        outInsets.touchableRegion.set(r)
+        val mode = ScriptHost.screenMode
+        // экран мода на весь экран: приложение не сжимается, касания ловит всё окно
+        if (mode == "fullscreen") {
+            outInsets.contentTopInsets = h
+            outInsets.visibleTopInsets = h
+            outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_FRAME
+            return
+        }
+        val card = if (mode == "floating") screenCardRect else null
+        val r = floatRect
+        if (r != null) {
+            outInsets.contentTopInsets = h
+            outInsets.visibleTopInsets = h
+            outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_REGION
+            outInsets.touchableRegion.set(r)
+            card?.let { outInsets.touchableRegion.union(it) }
+            return
+        }
+        if (mode == "floating") {
+            // обычная клавиатура внизу и плавающая панель мода над приложением: приложение сжимается только до клавиатуры
+            val k = screenKbRect
+            val top = k?.top ?: h
+            outInsets.contentTopInsets = top
+            outInsets.visibleTopInsets = top
+            outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_REGION
+            val region = outInsets.touchableRegion
+            if (k != null) region.set(k) else region.setEmpty()
+            card?.let { region.union(it) }
+        }
     }
+
+    /** Границы клавиатуры и плавающей панели мода в окне (только пока открыта плавающая панель). */
+    private var screenKbRect: android.graphics.Rect? = null
+    private var screenCardRect: android.graphics.Rect? = null
 
     /** Поверхность против мигания размытия (см. BlurGuard); есть только на Android 16+. */
     private var blurGuard: View? = null
@@ -568,6 +596,12 @@ class ComposeKeyboardService : InputMethodService(),
                     if (r != floatRect) {
                         floatRect = r
                         // окно пересчитает, где ловить касания, при следующем проходе отрисовки
+                        inputView?.invalidate()
+                    }
+                }, onScreenRects = { k, c ->
+                    if (k != screenKbRect || c != screenCardRect) {
+                        screenKbRect = k
+                        screenCardRect = c
                         inputView?.invalidate()
                     }
                 })
@@ -753,6 +787,8 @@ class ComposeKeyboardService : InputMethodService(),
         kb.toolbarOpen = false
         WordPredictorEngine.flush()
         moveLifecycle(Lifecycle.State.CREATED)
+        // экран мода не остаётся без клавиатуры: окно скрыто — экран закрыт
+        ScriptHost.closeScreen()
         ScriptHost.emit("hide")
         ScriptHost.setVisible(false)
     }

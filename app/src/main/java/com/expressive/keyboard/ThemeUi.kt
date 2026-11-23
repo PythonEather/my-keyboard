@@ -170,6 +170,24 @@ internal fun keyboardIsDark(settings: KeyboardSettings): Boolean {
     }
 }
 
+/**
+ * Очередь отрисовки мини-клавиатур: те, что появились вместе (галерея тем), рисуются по очереди, а не все сразу.
+ * Раньше все превью рисовались в первом кадре перехода на страницу — отсюда рывок при открытии «Тем».
+ */
+private object PreviewGate {
+    private var last = 0L
+    private var slot = 0
+
+    fun next(): Int {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - last > 400L) slot = 0
+        last = now
+        val mine = slot
+        slot = (slot + 1).coerceAtMost(12)
+        return mine
+    }
+}
+
 /** Мини-клавиатура в стиле оформления. interactive — клавиши можно нажимать, чтобы увидеть анимацию. */
 @Composable
 internal fun SkinMiniPreview(skin: KeyboardSkin?, settings: KeyboardSettings, modifier: Modifier, interactive: Boolean = false) {
@@ -187,6 +205,17 @@ internal fun SkinMiniPreview(skin: KeyboardSkin?, settings: KeyboardSettings, mo
     val press = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val pressAnim = remember(skin, settings.animPress, settings.customAnims) { Anims.forKey(settings, skin?.styleFor(KeyType.CHARACTER, "a")) }
+    // сначала — ровная плашка цвета фона, настоящая клавиатура рисуется чуть позже и по очереди (см. PreviewGate)
+    val turn = remember { PreviewGate.next() }
+    var ready by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(160L + turn * 45L)
+        ready = true
+    }
+    if (!ready) {
+        Box(modifier.clip(RoundedCornerShape(18.dp)).background(palette.background))
+        return
+    }
     Canvas(
         modifier.clip(RoundedCornerShape(18.dp))
             .then(
