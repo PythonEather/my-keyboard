@@ -259,7 +259,7 @@ internal fun PillField(
     val cs = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val rest = if (tonal) cs.secondaryContainer else cs.surfaceContainerHighest
+    val rest = glassSurface(if (tonal) cs.secondaryContainer else cs.surfaceContainerHighest)
     val bg by animateColorAsState(if (focused) cs.primaryContainer else rest, label = "pillBg")
     val tint by animateColorAsState(
         if (focused) cs.onPrimaryContainer else if (tonal) cs.onSecondaryContainer else cs.onSurfaceVariant, label = "pillTint"
@@ -328,7 +328,7 @@ internal fun GroupItem(onClick: (() -> Unit)? = null, content: @Composable () ->
     val corner = animateDpAsState(if (pressed) 22.dp else 4.dp, spring(dampingRatio = 0.6f, stiffness = 700f), label = "itemCorner")
     // угол читается только в слое: пока он «набухает», пункт не перекомпоновывается заново на каждом кадре
     Box(
-        Modifier.fillMaxWidth().roundedLayer { corner.value }.background(MaterialTheme.colorScheme.surfaceBright)
+        Modifier.fillMaxWidth().roundedLayer { corner.value }.background(glassSurface(MaterialTheme.colorScheme.surfaceBright))
             .then(
                 if (onClick != null) Modifier.clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
                 else Modifier
@@ -614,22 +614,21 @@ internal fun StylePreview(settings: KeyboardSettings, spec: WavySpec) {
 
 /** Плитка категории на главном экране: иконка в фигуре Expressive своего цвета. */
 @Composable
-internal fun CategoryTile(page: SettingsPage, index: Int, selected: Boolean = false, onClick: () -> Unit) {
+internal fun CategoryTile(page: SettingsPage, index: Int, selected: Boolean = false, expressive: Boolean = false, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val (bg, fg) = when (index % 3) {
         0 -> cs.primaryContainer to cs.onPrimaryContainer
         1 -> cs.secondaryContainer to cs.onSecondaryContainer
         else -> cs.tertiaryContainer to cs.onTertiaryContainer
     }
-    val prefs = KeyboardPrefs.observe().value
-    val expressive = prefs.designStyle == DesignStyle.EXPRESSIVE.id && prefs.shapeAmount == ShapeAmount.FULL
+    // «expressive» comes from the home screen once, instead of every tile watching all settings
     val spec = remember(page, expressive) { if (expressive) WavySpec.of(page.shape) else WavySpec.Circle }
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val rot by animateFloatAsState(if (pressed) 40f else 0f, spring(dampingRatio = 0.5f, stiffness = 300f), label = "tileRot")
     // выбранный пункт (две панели на планшете) — primaryContainer и 16 dp на всех углах, как в спецификации списков M3
     val corner = animateDpAsState(if (pressed) 22.dp else if (selected) 16.dp else 4.dp, spring(dampingRatio = 0.6f, stiffness = 700f), label = "tileCorner")
-    val tileBg = androidx.compose.animation.animateColorAsState(if (selected) cs.primaryContainer else cs.surfaceBright, label = "tileBg")
+    val tileBg = androidx.compose.animation.animateColorAsState(if (selected) cs.primaryContainer else glassSurface(cs.surfaceBright), label = "tileBg")
     Row(
         Modifier.fillMaxWidth().roundedLayer { corner.value }.drawBehind { drawRect(tileBg.value) }
             .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)

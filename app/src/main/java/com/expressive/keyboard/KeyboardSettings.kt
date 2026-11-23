@@ -218,6 +218,14 @@ data class KeyboardSettings(
     val pluginTrustAck: Boolean = false,
     /** Plugins with the settings_layout permission may arrange the Settings home screen. */
     val pluginSettingsLayout: Boolean = true,
+    /** Plugins with the toolbar_layout permission may arrange the keyboard toolbar. */
+    val pluginToolbarLayout: Boolean = true,
+    /** Settings home: pinned pages ("Important" slots) in the user's order, as SettingsPage names. */
+    val homePins: String = "",
+    /** Wallpaper behind Settings: 0 — none, otherwise the time it was picked. */
+    val settingsWallpaper: Long = 0L,
+    /** Frosted glass over that wallpaper: 0 off, 1 light, 2 medium, 3 strong. */
+    val settingsGlass: Int = 2,
     // --- клавиши ---
     val keyLabelScale: Float = 1f,
     val fontWeight: Int = 700,
@@ -585,6 +593,10 @@ object KeyboardPrefs {
             securityReminderMin = p.getInt("security_reminder_min", 4).coerceIn(1, 1440),
             pluginTrustAck = p.getBoolean(PluginTrust.PREF_KEY, false),
             pluginSettingsLayout = p.getBoolean("plugin_settings_layout", true),
+            pluginToolbarLayout = p.getBoolean("plugin_toolbar_layout", true),
+            homePins = p.getString("home_pins", "") ?: "",
+            settingsWallpaper = p.getLong("settings_wallpaper", 0L),
+            settingsGlass = p.getInt("settings_glass", 2).coerceIn(0, 3),
             keyLabelScale = p.getFloat("key_label_scale", 1f).coerceIn(0.7f, 1.4f),
             fontWeight = p.getInt("font_weight", 700).coerceIn(300, 900),
             showHints = p.getBoolean("show_hints", true),

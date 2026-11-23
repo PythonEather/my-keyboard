@@ -329,7 +329,9 @@ data class KeyboardPlugin(
      */
     val display: String? = null,
     /** Arranges the Settings home screen (manifest "settingsLayout", needs the "settings_layout" permission). */
-    val settingsLayout: SettingsLayoutSpec? = null
+    val settingsLayout: SettingsLayoutSpec? = null,
+    /** Arranges the keyboard toolbar (manifest "toolbarLayout", needs the "toolbar_layout" permission). */
+    val toolbarLayout: ToolbarLayoutSpec? = null
 ) {
     val usesNetwork: Boolean get() = "network" in permissions && (actions.any { it.type == PluginActionType.HTTP } || script != null)
     /** Есть что применить кнопкой «Применить оформление». */
@@ -361,7 +363,7 @@ object PluginParser {
     )
     val LAYOUT_IDS = setOf("symbols", "symbols2")
     private val LANG_ID = Regex("^[a-z]{2,3}([-_][a-z0-9]{2,8})?$")
-    val PERMISSIONS = setOf("network", "read_text", "clipboard", "launch", "ai", "sensors", "microphone", "app_info", "screen", "media", "settings_layout")
+    val PERMISSIONS = setOf("network", "read_text", "clipboard", "launch", "ai", "sensors", "microphone", "app_info", "screen", "media", "settings_layout", "toolbar_layout")
     val KEYS = setOf(
         "tab", "enter", "left", "right", "up", "down", "home", "end", "select_all", "copy", "cut",
         "paste", "undo", "redo", "delete_word", "escape"
@@ -495,7 +497,7 @@ object PluginParser {
             ic.keys().forEach { k ->
                 val v = ic.optString(k)
                 // путь к картинке внутри архива превращается в data URI
-                icons[k] = files[v]?.let { data -> "data:image/${v.substringAfterLast('.', "png")};base64,$data" } ?: v
+                icons[k] = files[v]?.takeIf { !it.startsWith(MEDIA_MARK) }?.let { data -> "data:image/${v.substringAfterLast('.', "png")};base64,$data" } ?: v
             }
         }
 
@@ -565,7 +567,8 @@ object PluginParser {
             enabledByDefault = o.optBoolean("enabledByDefault", true),
             skinJson = o.optJSONObject("skin")?.toString(),
             config = parseConfig(o.optJSONArray("config")),
-            settingsLayout = PluginSettingsLayout.parse(o.optJSONObject("settingsLayout"))
+            settingsLayout = PluginSettingsLayout.parse(o.optJSONObject("settingsLayout")),
+            toolbarLayout = PluginToolbarLayout.parse(o.optJSONObject("toolbarLayout"), id)
         )
     }
 
@@ -676,6 +679,104 @@ object PluginParser {
         for ((k, v) in files) if (k != "plugin.json" && k != "manifest.json" && k != main) f.put(k, android.util.Base64.encodeToString(v, android.util.Base64.NO_WRAP))
         if (f.length() > 0) o.put("files", f)
         return o.toString()
+    }
+
+    /** Метка в сохранённых «files» плагина: файл большой (музыка), он лежит настоящим файлом в папке плагина, а не внутри JSON. */
+    const val MEDIA_MARK = "@media:"
+    private const val BIG_FILE = 256 * 1024
+    private const val MAX_MEDIA = 256L * 1024 * 1024
+    private val AUDIO_EXT = setOf("mp3", "ogg", "oga", "opus", "wav", "m4a", "aac", "flac", "mid", "midi")
+
+    /** Папка больших файлов плагина (музыка из архива). Приставка «p_» не даёт id вроде «..» выйти из папки. */
+    fun mediaDir(context: Context, pluginId: String): java.io.File =
+        java.io.File(java.io.File(context.applicationContext.filesDir, "plugin_media"), "p_" + pluginId.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+
+    /** Файл по значению с меткой MEDIA_MARK; null, если его уже нет. */
+    fun mediaFile(context: Context, pluginId: String, mark: String): java.io.File? {
+        val name = mark.removePrefix(MEDIA_MARK)
+        if (name.isEmpty() || name == "." || name == ".." || name.contains('/') || name.contains('\\')) return null
+        return java.io.File(mediaDir(context, pluginId), name).takeIf { it.isFile }
+    }
+
+    private fun readCapped(input: java.io.InputStream, limit: Long, message: String): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(16 * 1024)
+        var total = 0L
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            total += n
+            require(total <= limit) { message }
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
+    }
+
+    /**
+     * То же, что zipToJson, но для большого архива на диске (до 256 МБ): архив целиком в память не читается.
+     * Мелкие файлы идут в JSON base64, как раньше; большие и любое аудио копируются потоком в [mediaOut] и помечаются MEDIA_MARK.
+     */
+    fun zipFileToJson(zip: java.io.File, mediaOut: java.io.File): String {
+        java.util.zip.ZipFile(zip).use { zf ->
+            val all = ArrayList<java.util.zip.ZipEntry>()
+            val en = zf.entries()
+            while (en.hasMoreElements()) {
+                val e = en.nextElement()
+                if (!e.isDirectory) all += e
+            }
+            fun clean(e: java.util.zip.ZipEntry): String {
+                val name = e.name.replace('\\', '/').trimStart('/')
+                require(!name.contains("..")) { "Invalid path in the archive: $name" }
+                return name
+            }
+            val names = all.map { clean(it) }
+            // если всё лежит в одной папке — убираем её из путей
+            val prefix = names.map { it.substringBefore('/', "") }.distinct().singleOrNull()?.takeIf { p -> p.isNotEmpty() && names.all { it.startsWith("$p/") } }
+            val byName = LinkedHashMap<String, java.util.zip.ZipEntry>()
+            for (e in all) {
+                val n = clean(e)
+                byName[if (prefix != null) n.removePrefix("$prefix/") else n] = e
+            }
+            val manifestEntry = byName["plugin.json"] ?: byName["manifest.json"]
+                ?: throw IllegalArgumentException("The archive has no plugin.json")
+            val manifest = readCapped(zf.getInputStream(manifestEntry), 1L * 1024 * 1024, "plugin.json is larger than 1 MB").toString(Charsets.UTF_8)
+            val o = JSONObject(manifest.removePrefix("\uFEFF"))
+            val main = o.optString("main", "main.js")
+            byName[main]?.let { e ->
+                if (!o.has("script")) o.put("script", readCapped(zf.getInputStream(e), 8L * 1024 * 1024, "The script is larger than 8 MB").toString(Charsets.UTF_8))
+            }
+            val f = JSONObject()
+            var small = 0L
+            var media = 0L
+            for ((name, e) in byName) {
+                if (name == "plugin.json" || name == "manifest.json" || name == main) continue
+                val big = e.size >= BIG_FILE || name.substringAfterLast('.', "").lowercase() in AUDIO_EXT
+                if (!big) {
+                    val data = readCapped(zf.getInputStream(e), 8L * 1024 * 1024 - small, "The small files of the archive are larger than 8 MB together")
+                    small += data.size
+                    f.put(name, android.util.Base64.encodeToString(data, android.util.Base64.NO_WRAP))
+                } else {
+                    mediaOut.mkdirs()
+                    val base = name.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]"), "_").take(80).ifEmpty { "file" }
+                    val disk = Integer.toHexString(name.hashCode()) + "_" + base
+                    zf.getInputStream(e).use { input ->
+                        java.io.File(mediaOut, disk).outputStream().use { out ->
+                            val buf = ByteArray(64 * 1024)
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n < 0) break
+                                media += n
+                                require(media <= MAX_MEDIA) { "The big files of the archive are larger than 256 MB together" }
+                                out.write(buf, 0, n)
+                            }
+                        }
+                    }
+                    f.put(name, MEDIA_MARK + disk)
+                }
+            }
+            if (f.length() > 0) o.put("files", f)
+            return o.toString()
+        }
     }
 
     /** Эмодзи/текст обрезается до 8 символов; "@значок" и data:image — целиком. */
@@ -905,6 +1006,8 @@ object PluginRepository {
     private const val PREFS = "expressive_keyboard_plugins"
     private const val DIR = "plugins"
     private const val MAX_FILE = 8 * 1024 * 1024
+    /** Архив .zip с музыкой: до 256 МБ, читается с диска потоком. Одиночный .json/.js остаётся до 8 МБ. */
+    private const val MAX_ZIP = 256L * 1024 * 1024
     /** Встроенный мод, который подменяет «"» на «ёлочки». */
     private const val SMART_QUOTES_ID = "builtin.smart-quotes"
     /** Отметка о разовом выключении мода «Ёлочки» (см. reload). */
@@ -1050,21 +1153,57 @@ object PluginRepository {
 
     fun importFrom(context: Context, uri: Uri): Result<KeyboardPlugin> = runCatching {
         val app = context.applicationContext
-        val bytes = app.contentResolver.openInputStream(uri)?.use { input ->
-            val out = java.io.ByteArrayOutputStream()
-            val buf = ByteArray(8192)
-            while (true) {
-                val n = input.read(buf)
-                if (n < 0) break
-                out.write(buf, 0, n)
-                require(out.size() <= MAX_FILE) { "The file is larger than 8 MB" }
+        // сначала файл на диск потоком: большой архив с музыкой не должен целиком лечь в память
+        val tmp = File.createTempFile("plugin_import", ".tmp", app.cacheDir)
+        try {
+            app.contentResolver.openInputStream(uri)?.use { input ->
+                tmp.outputStream().use { out ->
+                    val buf = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        total += n
+                        require(total <= MAX_ZIP) { "The file is larger than 256 MB" }
+                        out.write(buf, 0, n)
+                    }
+                }
+            } ?: throw IllegalStateException("Could not open the file")
+            // .zip начинается с «PK»
+            val isZip = tmp.inputStream().use { it.read() == 'P'.code && it.read() == 'K'.code }
+            if (isZip) importZip(app, tmp)
+            else {
+                require(tmp.length() <= MAX_FILE) { "The file is larger than 8 MB (a plugin with music goes into a .zip)" }
+                importText(app, tmp.readText()).getOrThrow()
             }
-            out.toByteArray()
-        } ?: throw IllegalStateException("Could not open the file")
-        // .zip начинается с «PK»
-        if (bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()) {
-            importText(app, PluginParser.zipToJson(bytes)).getOrThrow()
-        } else importText(app, String(bytes, Charsets.UTF_8)).getOrThrow()
+        } finally {
+            tmp.delete()
+        }
+    }
+
+    /** Архив: большие файлы (музыка) потоком в папку плагина, остальное — в JSON плагина, как раньше. */
+    private fun importZip(app: Context, zip: File): KeyboardPlugin {
+        val staging = File(app.filesDir, "plugin_media_new")
+        staging.deleteRecursively()
+        try {
+            val json = PluginParser.zipFileToJson(zip, staging)
+            val parsed = PluginParser.parse(json, false)
+            require(plugins.none { it.builtIn && it.id == parsed.id }) { "id \"${parsed.id}\" is taken by a built-in plugin" }
+            // музыка встаёт на место до запуска плагина: скрипт может играть её сразу при загрузке
+            val finalDir = PluginParser.mediaDir(app, parsed.id)
+            finalDir.deleteRecursively()
+            if (staging.listFiles().isNullOrEmpty()) staging.deleteRecursively()
+            else {
+                finalDir.parentFile?.mkdirs()
+                require(staging.renameTo(finalDir)) { "Could not save the media files of the plugin" }
+            }
+            return importText(app, json).getOrElse { e ->
+                finalDir.deleteRecursively()
+                throw e
+            }
+        } finally {
+            staging.deleteRecursively()
+        }
     }
 
     /** JSON плагина или исходник мода .js с манифестом в комментарии /* @plugin {…} */. */
@@ -1084,6 +1223,7 @@ object PluginRepository {
     fun delete(context: Context, id: String) {
         val app = context.applicationContext
         File(File(app.filesDir, DIR), "$id.json").delete()
+        PluginParser.mediaDir(app, id).deleteRecursively()
         reload(app)
     }
 

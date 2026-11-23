@@ -278,8 +278,18 @@ internal fun importBackground(context: Context, uri: Uri): Boolean = runCatching
     true
 }.getOrDefault(false)
 
+/** Settings: an optional wallpaper (static frosted glass) behind the pages; the cards on top turn into glass with it. */
 @Composable
 fun SettingsScreen(settings: KeyboardSettings) {
+    val wallpaper = rememberSettingsWallpaper(settings)
+    Box(Modifier.fillMaxSize()) {
+        if (wallpaper != null) SettingsWallpaperLayer(wallpaper, Modifier.fillMaxSize())
+        CompositionLocalProvider(LocalSettingsGlass provides (wallpaper != null)) { SettingsScreenBody(settings) }
+    }
+}
+
+@Composable
+private fun SettingsScreenBody(settings: KeyboardSettings) {
     var page by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(SettingsPage.HOME) }
     // M3, классы размера окна: от 840 dp (expanded) — две панели «список — подробности»,
     // слева разделы, справа выбранный; на 600–839 dp — одна панель, но не шире 720 dp (строки не растягиваются)
@@ -287,7 +297,7 @@ fun SettingsScreen(settings: KeyboardSettings) {
     if (widthDp >= 840) {
         val detail = if (page == SettingsPage.HOME) SettingsPage.THEMES else page
         androidx.activity.compose.BackHandler(enabled = detail.parent != SettingsPage.HOME) { page = detail.parent }
-        Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) {
+        Row(Modifier.fillMaxSize().background(settingsPageBg())) {
             Box(Modifier.width(if (widthDp >= 1200) 420.dp else 360.dp).fillMaxHeight()) {
                 SettingsPageScaffold(SettingsPage.HOME, settings, onNavigate = { page = it }, selected = detail)
             }
@@ -321,7 +331,7 @@ fun SettingsScreen(settings: KeyboardSettings) {
         },
         label = "settingsPage"
     ) { p ->
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.fillMaxSize().background(settingsPageBg()), contentAlignment = Alignment.TopCenter) {
             Box(Modifier.widthIn(max = 720.dp)) { SettingsPageScaffold(p, settings, onNavigate = { page = it }) }
         }
     }
@@ -339,7 +349,7 @@ internal fun SettingsPageScaffold(
         SettingsPage.GESTURES, SettingsPage.TYPING, SettingsPage.FEEDBACK)
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = cs.surfaceContainer,
+        containerColor = settingsPageBg(),
         topBar = {
             LargeTopAppBar(
                 title = { Text(tr(page.title), fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -350,7 +360,10 @@ internal fun SettingsPageScaffold(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.largeTopAppBarColors(containerColor = cs.surfaceContainer, scrolledContainerColor = cs.surfaceContainer),
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = settingsPageBg(),
+                    scrolledContainerColor = if (LocalSettingsGlass.current) cs.surfaceContainer.copy(alpha = 0.85f) else cs.surfaceContainer
+                ),
                 scrollBehavior = scrollBehavior
             )
         }
@@ -455,8 +468,10 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     var query by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var editingPins by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     PillField(query, { query = it }, "Найти настройку: вибрация, шрифт, свайп…", Icons.Rounded.Search, tonal = true)
-    if (query.isNotBlank()) {
+    val searching = query.isNotBlank()
+    if (searching) {
         val found = remember(query) { SettingsSearch.find(query) }
         SettingsSection(tr("Найдено: {0}", found.size)) {
             if (found.isEmpty()) GroupItem { Text(tr("Ничего не нашлось"), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -465,66 +480,91 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
                 ActionItem(p.icon, title, if (title == tr(p.title)) tr(p.subtitle) else tr(p.title), onClick = { onNavigate(p) })
             }
         }
-        return
     }
-    var i = 0
-    // a plugin with the settings_layout permission may pin, reorder and hide pages (never Plugins, Backup or About)
-    val arranger = PluginSettingsLayout.owner(settings.pluginSettingsLayout)
-    val layout = arranger?.settingsLayout
-    SettingsSection(null) {
-        AppLanguageItem(settings)
-        val p = SettingsPage.WHATS_NEW
-        if (PluginSettingsLayout.arrange(listOf(p), layout).isNotEmpty()) CategoryTile(p, i++, selected = p == selected) { onNavigate(p) }
-    }
-    if (!imeEnabled || !imeSelected) HeroCard(
-        spec = rememberSpec(settings),
-        imeEnabled = imeEnabled,
-        imeSelected = imeSelected,
-        micGranted = micGranted,
-        onEnable = {
-            runCatching { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        },
-        onSelect = { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker() },
-        onMic = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) }
-    )
-    if (arranger != null) {
-        val pinned = PluginSettingsLayout.pinned(layout)
-        SettingsSection(tr(arranger.name)) {
-            for (p in pinned) CategoryTile(p, i++, selected = p == selected || p == selected?.parent) { onNavigate(p) }
-            ActionItem(
-                Icons.Rounded.Extension, tr("Settings are arranged by a plugin"), tr("Tap to restore the normal order"),
-                onClick = { KeyboardPrefs.edit(context) { putBoolean("plugin_settings_layout", false) } }
+    // The normal screen stays composed while the search results are shown (it is only collapsed to nothing), so
+    // typing does not tear it down and clearing the search does not rebuild every tile: that rebuild was the lag.
+    Column(Modifier.collapsedIf(searching), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        var i = 0
+        // a plugin with the settings_layout permission may pin, reorder and hide pages (never Plugins, Backup or About)
+        val arranger = PluginSettingsLayout.owner(settings.pluginSettingsLayout)
+        val layout = arranger?.settingsLayout
+        // read once here: every tile used to watch all settings by itself
+        val expressive = settings.designStyle == DesignStyle.EXPRESSIVE.id && settings.shapeAmount == ShapeAmount.FULL
+        // the user's own "Important" slots; while a plugin arranges Settings, the plugin decides
+        val pins = if (arranger == null) HomePins.parse(settings.homePins) else emptyList()
+        SettingsSection(null) {
+            AppLanguageItem(settings)
+            val p = SettingsPage.WHATS_NEW
+            if (PluginSettingsLayout.arrange(listOf(p), layout).isNotEmpty()) CategoryTile(p, i++, selected = p == selected, expressive = expressive) { onNavigate(p) }
+        }
+        if (!imeEnabled || !imeSelected) HeroCard(
+            spec = rememberSpec(settings),
+            imeEnabled = imeEnabled,
+            imeSelected = imeSelected,
+            micGranted = micGranted,
+            onEnable = {
+                runCatching { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            },
+            onSelect = { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker() },
+            onMic = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) }
+        )
+        if (arranger != null) {
+            val pinned = PluginSettingsLayout.pinned(layout)
+            SettingsSection(tr(arranger.name)) {
+                for (p in pinned) CategoryTile(p, i++, selected = p == selected || p == selected?.parent, expressive = expressive) { onNavigate(p) }
+                ActionItem(
+                    Icons.Rounded.Extension, tr("Settings are arranged by a plugin"), tr("Tap to restore the normal order"),
+                    onClick = { KeyboardPrefs.edit(context) { putBoolean("plugin_settings_layout", false) } }
+                )
+            }
+        }
+        if (arranger == null) {
+            if (editingPins) {
+                PinEditor(settings) { editingPins = false }
+            } else {
+                if (pins.isNotEmpty()) SettingsSection("Important") {
+                    for (p in pins) CategoryTile(p, i++, selected = p == selected || p == selected?.parent, expressive = expressive) { onNavigate(p) }
+                }
+                SettingsSection(null) {
+                    ActionItem(
+                        Icons.Rounded.Edit, "Arrange important settings", "Pin pages to the top and drag them into your order",
+                        onClick = { editingPins = true }
+                    )
+                }
+            }
+        }
+        if (!editingPins) {
+            val looks = PluginSettingsLayout.arrange(
+                listOf(SettingsPage.SIZE, SettingsPage.KEYS, SettingsPage.THEMES, SettingsPage.COLORS, SettingsPage.ANIMATIONS), layout
+            ).filter { it !in pins }
+            if (looks.isNotEmpty()) SettingsSection("Внешний вид") {
+                for (p in looks) {
+                    CategoryTile(p, i++, selected = p == selected || p == selected?.parent, expressive = expressive) { onNavigate(p) }
+                }
+            }
+            val groups = listOf(
+                "Ввод" to listOf(SettingsPage.LANGUAGES, SettingsPage.GESTURES, SettingsPage.TYPING, SettingsPage.MY_WORDS, SettingsPage.FEEDBACK),
+                "Инструменты" to listOf(SettingsPage.LAYOUT, SettingsPage.TOOLBAR, SettingsPage.CLIPBOARD, SettingsPage.PLUGINS),
+                "Приложение" to listOf(SettingsPage.POWER, SettingsPage.BACKUP, SettingsPage.ABOUT)
             )
-        }
-    }
-    val looks = PluginSettingsLayout.arrange(
-        listOf(SettingsPage.SIZE, SettingsPage.KEYS, SettingsPage.THEMES, SettingsPage.COLORS, SettingsPage.ANIMATIONS), layout
-    )
-    if (looks.isNotEmpty()) SettingsSection("Внешний вид") {
-        for (p in looks) {
-            CategoryTile(p, i++, selected = p == selected || p == selected?.parent) { onNavigate(p) }
-        }
-    }
-    val groups = listOf(
-        "Ввод" to listOf(SettingsPage.LANGUAGES, SettingsPage.GESTURES, SettingsPage.TYPING, SettingsPage.MY_WORDS, SettingsPage.FEEDBACK),
-        "Инструменты" to listOf(SettingsPage.LAYOUT, SettingsPage.TOOLBAR, SettingsPage.CLIPBOARD, SettingsPage.PLUGINS),
-        "Приложение" to listOf(SettingsPage.POWER, SettingsPage.BACKUP, SettingsPage.ABOUT)
-    )
-    for ((title, allPages) in groups) {
-        val pages = PluginSettingsLayout.arrange(allPages, layout)
-        if (pages.isEmpty()) continue
-        SettingsSection(title) {
-            for (p in pages) {
-                val idx = i++
-                CategoryTile(p, idx, selected = p == selected || p == selected?.parent) { onNavigate(p) }
+            for ((title, allPages) in groups) {
+                val pages = PluginSettingsLayout.arrange(allPages, layout).filter { it !in pins }
+                if (pages.isEmpty()) continue
+                SettingsSection(title) {
+                    for (p in pages) {
+                        val idx = i++
+                        CategoryTile(p, idx, selected = p == selected || p == selected?.parent, expressive = expressive) { onNavigate(p) }
+                    }
+                    if (SettingsPage.TOOLBAR in allPages && imeSelected && !micGranted) {
+                        ActionItem(Icons.Rounded.Mic, "Микрофон для голосового ввода", null,
+                            onClick = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) })
+                    }
+                }
             }
-            if (SettingsPage.TOOLBAR in allPages && imeSelected && !micGranted) {
-                ActionItem(Icons.Rounded.Mic, "Микрофон для голосового ввода", null,
-                    onClick = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) })
-            }
+            HomeLookSection(settings)
         }
+        UpdateCard()
     }
-    UpdateCard()
 }
 
 @Composable

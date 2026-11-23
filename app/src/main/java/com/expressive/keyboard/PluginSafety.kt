@@ -156,6 +156,13 @@ internal fun PluginSecuritySection(settings: KeyboardSettings) {
                 settings.pluginSettingsLayout
             ) { v -> KeyboardPrefs.edit(context) { putBoolean("plugin_settings_layout", v) } }
         }
+        if (plugins.any { it.toolbarLayout != null }) {
+            ToggleItem(
+                Icons.Rounded.Extension, tr("Plugins may arrange the toolbar"),
+                tr("Plugins with the toolbar_layout permission can reorder and hide buttons on the keyboard toolbar. Plugins and Settings always stay visible"),
+                settings.pluginToolbarLayout
+            ) { v -> KeyboardPrefs.edit(context) { putBoolean("plugin_toolbar_layout", v) } }
+        }
         risky.forEach { p ->
             GroupItem {
                 Row(

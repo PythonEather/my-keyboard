@@ -519,6 +519,13 @@ internal fun ToolbarPage(settings: KeyboardSettings) {
         "Порядок кнопок на панели инструментов (кнопка с сеткой слева вверху). На самой клавиатуре порядок тоже " +
             "меняется: удерживайте кнопку и перетащите её влево или вправо."
     )
+    val arranger = PluginToolbarLayout.owner(settings.pluginToolbarLayout)
+    if (arranger != null) SettingsSection(tr(arranger.name)) {
+        ActionItem(
+            Icons.Rounded.Extension, tr("The toolbar is arranged by a plugin"), tr("Tap to use your own order again"),
+            onClick = { KeyboardPrefs.edit(context) { putBoolean("plugin_toolbar_layout", false) } }
+        )
+    }
     SettingsSection("Размер") {
         SliderItem(
             icon = Icons.Rounded.Height, title = "Толщина верхней панели",

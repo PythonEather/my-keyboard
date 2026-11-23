@@ -65,7 +65,7 @@ Three things people often get wrong:
 | `name` | yes | Name |
 | `version`, `author`, `description` | no | Shown in the list |
 | `icon` | no | An emoji, a short text, `@icon` or `data:image/png;base64,…` (see "Icons") |
-| `permissions` | no | `network` — internet, `read_text` — read the typed text, `clipboard` — read the clipboard, `launch` — open links, apps and "Share", `ai` — AI requests with the user's key, `sensors` — tilt and rotation of the phone, `microphone` — volume and frequencies from the microphone, `app_info` — which app is being typed in, `screen` — show the mod's own screen (fullscreen, landscape or a floating panel), `media` — what is playing and the player controls, `settings_layout` — arrange the Settings home screen |
+| `permissions` | no | `network` — internet, `read_text` — read the typed text, `clipboard` — read the clipboard, `launch` — open links, apps and "Share", `ai` — AI requests with the user's key, `sensors` — tilt and rotation of the phone, `microphone` — volume and frequencies from the microphone, `app_info` — which app is being typed in, `screen` — show the mod's own screen (fullscreen, landscape or a floating panel), `media` — what is playing and the player controls, `settings_layout` — arrange the Settings home screen, `toolbar_layout` — arrange the keyboard toolbar |
 | `config` | no | The mod's own settings — they appear in its card (see "Mod settings") |
 | `script` | no | The mod's JavaScript (a string or an array of strings) |
 | `scriptEngine` | no | `rhino` (default) or `quickjs` |
@@ -1077,6 +1077,25 @@ A plugin with `"settings_layout"` in `permissions` may add a `settingsLayout` bl
 - `plugins`, `backup` and `about` can never be hidden. The home screen shows a row to restore the normal order, and the user can
   turn the whole feature off in Settings → Plugins → Plugin security. If several plugins have a block, the first enabled one wins.
 - This changes only the order and visibility of pages, not what is inside them.
+
+### Permission `toolbar_layout`: arrange the keyboard toolbar
+
+A plugin with `"toolbar_layout"` in `permissions` may add a `toolbarLayout` block to the manifest:
+
+```json
+{ "id": "my-toolbar", "name": "My toolbar", "permissions": ["toolbar_layout"],
+  "toolbarLayout": {
+    "order":  ["button:go", "emoji", "clipboard", "gif"],
+    "hidden": ["translate", "one_handed"] } }
+```
+
+- `order` - buttons shown first, in this order. Buttons not named keep the user's own order after them.
+- `hidden` - buttons removed from the toolbar.
+- Button ids: `emoji`, `gif`, `clipboard`, `translate`, `ai_fix`, `one_handed`, `floating`, `incognito`, `hide`, `plugins`, `settings`.
+  Use `button:<id>` for a toolbar button your own script added (the same as `btn:<plugin id>:<id>` in the full form).
+- `plugins` and `settings` can never be hidden. While a plugin arranges the toolbar, dragging buttons on the keyboard is off.
+  The Toolbar settings page has a row to go back to the user's own order, and the user can turn the whole feature off in
+  Settings -> Plugins -> Plugin security. If several plugins have a block, the first enabled one wins.
 
 ### Dynamic shadow and static frosted glass
 

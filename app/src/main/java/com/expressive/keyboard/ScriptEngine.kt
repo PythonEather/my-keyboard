@@ -1054,25 +1054,36 @@ object ScriptHost {
         }
     }
 
-    /** Звук из data: URI или файла архива мода — во временный файл и в MediaPlayer. */
+    /** Файл архива мода как base64. Мелкие лежат в JSON плагина, большие (музыка) — настоящими файлами в его папке. */
+    private fun fileBase64(ctx: Context, m: Mod, path: String): String? {
+        val v = m.plugin.files[path] ?: return null
+        if (!v.startsWith(PluginParser.MEDIA_MARK)) return v
+        val f = PluginParser.mediaFile(ctx, m.plugin.id, v) ?: throw IllegalArgumentException("file \"$path\" is missing")
+        require(f.length() <= 16L * 1024 * 1024) { "file \"$path\" is larger than 16 MB: only playAudio can use a file that big" }
+        return android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP)
+    }
+
+    /** Звук из data: URI или файла архива мода. Большие файлы архива (музыка) играют прямо с диска, без загрузки в память. */
     private fun playAudio(ctx: Context, m: Mod, src: String, volume: Float, loop: Boolean): Int {
         require(m.players.size < 8) { "playAudio: at most 8 sounds at once" }
-        val b64 = when {
-            src.startsWith("data:") -> src.substringAfter(',')
-            else -> m.plugin.files[src] ?: throw IllegalArgumentException("playAudio: no file \"$src\"")
+        val stored = if (src.startsWith("data:")) null else m.plugin.files[src] ?: throw IllegalArgumentException("playAudio: no file \"$src\"")
+        val path: String = if (stored != null && stored.startsWith(PluginParser.MEDIA_MARK)) {
+            (PluginParser.mediaFile(ctx, m.plugin.id, stored) ?: throw IllegalArgumentException("playAudio: file \"$src\" is missing")).absolutePath
+        } else {
+            val bytes = android.util.Base64.decode(stored ?: src.substringAfter(','), android.util.Base64.DEFAULT)
+            require(bytes.size < 8 * 1024 * 1024) { "playAudio: file is larger than 8 MB" }
+            val dir = java.io.File(ctx.cacheDir, "mod_audio").apply { mkdirs() }
+            val f = java.io.File(dir, "${m.plugin.id.hashCode()}_${src.hashCode()}.bin")
+            if (!f.exists() || f.length() != bytes.size.toLong()) f.writeBytes(bytes)
+            f.absolutePath
         }
-        val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
-        require(bytes.size < 8 * 1024 * 1024) { "playAudio: file is larger than 8 MB" }
-        val dir = java.io.File(ctx.cacheDir, "mod_audio").apply { mkdirs() }
-        val f = java.io.File(dir, "${m.plugin.id.hashCode()}_${src.hashCode()}.bin")
-        if (!f.exists() || f.length() != bytes.size.toLong()) f.writeBytes(bytes)
         val pid = m.nextPlayer++
         val mp = android.media.MediaPlayer()
         mp.setAudioAttributes(
             android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
                 .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
         )
-        mp.setDataSource(f.absolutePath)
+        mp.setDataSource(path)
         mp.isLooping = loop
         mp.setVolume(volume, volume)
         mp.setOnCompletionListener {
@@ -1498,7 +1509,7 @@ object ScriptHost {
         // --- файлы из архива плагина
         def(kb, "asset") { a ->
             val path = str(a, 0)
-            val data = m.plugin.files[path] ?: return@def null
+            val data = fileBase64(ctx, m, path) ?: return@def null
             if (path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".webp") || path.endsWith(".gif")) {
                 "data:image/${path.substringAfterLast('.')};base64,$data"
             } else String(android.util.Base64.decode(data, android.util.Base64.DEFAULT))
@@ -1651,7 +1662,7 @@ object ScriptHost {
         def(kb, "editorAction") { a -> b()?.scriptEditorAction(str(a, 0, "done")); Unit }
         def(kb, "commitImage") { a ->
             val src = str(a, 0)
-            val data = if (src.startsWith("data:")) src else m.plugin.files[src]?.let { "data:image/${src.substringAfterLast('.')};base64,$it" }
+            val data = if (src.startsWith("data:")) src else fileBase64(ctx, m, src)?.let { "data:image/${src.substringAfterLast('.')};base64,$it" }
                 ?: throw IllegalArgumentException("commitImage: expects data:image/… or a file from the mod archive")
             val mime = data.substringAfter("data:").substringBefore(';').ifEmpty { "image/png" }
             val bytes = android.util.Base64.decode(data.substringAfter(','), android.util.Base64.DEFAULT)

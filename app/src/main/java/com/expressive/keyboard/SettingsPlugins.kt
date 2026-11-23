@@ -153,7 +153,7 @@ internal fun PluginsPage(settings: KeyboardSettings) {
         r.onSuccess { p ->
             Toast.makeText(context, tr("Плагин «{0}» установлен", tr(p.name)), Toast.LENGTH_SHORT).show()
             expanded = p.id
-            if (p.usesNetwork || p.permissions.any { it in setOf("read_text", "clipboard", "launch", "ai", "sensors", "microphone", "app_info", "screen", "media", "settings_layout") }) pendingNetwork = p
+            if (p.usesNetwork || p.permissions.any { it in setOf("read_text", "clipboard", "launch", "ai", "sensors", "microphone", "app_info", "screen", "media", "settings_layout", "toolbar_layout") }) pendingNetwork = p
         }.onFailure { Toast.makeText(context, tr("Ошибка: {0}", it.message), Toast.LENGTH_LONG).show() }
     }
     val modExampleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/javascript")) { uri: Uri? ->
@@ -293,6 +293,7 @@ internal fun PluginsPage(settings: KeyboardSettings) {
                         if ("app_info" in p.permissions) add("• " + tr("знать, в каком приложении вы печатаете"))
                         if ("media" in p.permissions) add("• " + tr("see what music is playing and control the player"))
                         if ("settings_layout" in p.permissions) add("• " + tr("arrange the Settings home screen: order, pinned and hidden pages"))
+                        if ("toolbar_layout" in p.permissions) add("• " + tr("arrange the keyboard toolbar: button order and hidden buttons"))
                         if ("screen" in p.permissions) add("• " + trs("показывать свой экран: на весь экран или плавающей панелью поверх приложения"))
                         if ("network" in p.permissions) add(
                             "• " + tr("выходить в интернет") + p.actions.filter { it.type == PluginActionType.HTTP }
@@ -372,6 +373,7 @@ internal fun PluginCard(p: KeyboardPlugin, expanded: Boolean, onExpand: () -> Un
                                     "screen" -> trs("свой экран")
                                     "media" -> tr("music playing now and player controls")
                                     "settings_layout" -> tr("arranges the Settings screen")
+                                    "toolbar_layout" -> tr("arranges the toolbar")
                                     else -> tr("интернет")
                                 }
                             },

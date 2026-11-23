@@ -685,8 +685,10 @@ internal fun ToolbarPill(state: KeyboardState, actions: KeyboardActions, setting
     val fg = chipStyle?.text ?: palette.onFunc
     val catalog = Toolbar.catalog()
     val byId = remember(catalog) { catalog.associateBy { it.id } }
-    val ids = remember(catalog, settings.toolbarOrder, settings.toolbarHidden) {
-        Toolbar.arrange(catalog.map { it.id }, settings.toolbarOrderList, settings.toolbarHiddenSet)
+    // a plugin with the toolbar_layout permission may put its buttons first and hide others (see PluginToolbarLayout)
+    val layoutSpec = PluginToolbarLayout.owner(settings.pluginToolbarLayout)?.toolbarLayout
+    val ids = remember(catalog, settings.toolbarOrder, settings.toolbarHidden, layoutSpec) {
+        PluginToolbarLayout.effective(catalog.map { it.id }, settings.toolbarOrderList, settings.toolbarHiddenSet, layoutSpec)
     }
     var order by remember(ids) { mutableStateOf(ids) }
     var dragging by remember { mutableStateOf<String?>(null) }
@@ -734,6 +736,8 @@ internal fun ToolbarPill(state: KeyboardState, actions: KeyboardActions, setting
             .pointerInput(ids) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = start@{ at ->
+                        // while a plugin arranges the toolbar the order is the plugin's; dragging would not stick
+                        if (layoutSpec != null) return@start
                         val used = order.size * step - gapPx
                         val offset = max(0f, (size.width - used) / 2f)
                         val i = ((at.x - offset) / step).toInt()

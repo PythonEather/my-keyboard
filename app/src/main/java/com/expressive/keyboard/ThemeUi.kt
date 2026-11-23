@@ -190,7 +190,11 @@ private object PreviewGate {
 
 /** Мини-клавиатура в стиле оформления. interactive — клавиши можно нажимать, чтобы увидеть анимацию. */
 @Composable
-internal fun SkinMiniPreview(skin: KeyboardSkin?, settings: KeyboardSettings, modifier: Modifier, interactive: Boolean = false) {
+internal fun SkinMiniPreview(
+    skin: KeyboardSkin?, settings: KeyboardSettings, modifier: Modifier, interactive: Boolean = false,
+    /** Called once the real keyboard (not the flat placeholder) is on screen: BakedPreview then keeps it as one picture. */
+    onDrawn: (() -> Unit)? = null
+) {
     val shown = remember(skin, settings) { skin?.applyColors(settings) ?: settings }
     val palette = rememberKeyPalette(shown)
     val baseFont = LocalKeyFont.current
@@ -212,6 +216,7 @@ internal fun SkinMiniPreview(skin: KeyboardSkin?, settings: KeyboardSettings, mo
         delay(160L + turn * 45L)
         ready = true
     }
+    LaunchedEffect(ready) { if (ready) onDrawn?.invoke() }
     if (!ready) {
         Box(modifier.clip(RoundedCornerShape(18.dp)).background(palette.background))
         return
@@ -314,9 +319,23 @@ internal fun SkinMiniPreview(skin: KeyboardSkin?, settings: KeyboardSettings, mo
     }
 }
 
+/**
+ * Gallery preview: the keyboard is drawn live only the first time; after that it is one cached picture, so opening
+ * the page and scrolling it cost almost nothing (this is what made the Themes page stutter). The picture is
+ * redrawn only when the theme, its options, the colours or the language change.
+ */
+@Composable
+private fun BakedSkinPreview(skinId: String, plugin: KeyboardPlugin?, settings: KeyboardSettings, dark: Boolean, modifier: Modifier) {
+    val key = listOf(skinId, plugin?.skinJson, settings, dark, I18n.lang)
+    BakedPreview(key, modifier) { onDrawn ->
+        val skin = remember(plugin, settings.skinOptions, settings.userAccent, settings.colorAccentText, settings.keyOpacity, dark) { previewSkin(plugin, settings, dark) }
+        SkinMiniPreview(skin, settings, Modifier.fillMaxSize(), onDrawn = onDrawn)
+    }
+}
+
 /** Карточка темы в галерее. */
 @Composable
-private fun ThemeCard(title: String, subtitle: String, selected: Boolean, skin: KeyboardSkin?, settings: KeyboardSettings, onClick: () -> Unit) {
+private fun ThemeCard(title: String, subtitle: String, selected: Boolean, skinId: String, plugin: KeyboardPlugin?, dark: Boolean, settings: KeyboardSettings, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val corner = animateDpAsState(if (selected) 28.dp else 18.dp, spring(dampingRatio = 0.6f, stiffness = 500f), label = "themeCorner")
     val bg = animateColorAsState(if (selected) cs.primaryContainer else cs.surfaceContainerHigh, label = "themeBg")
@@ -335,7 +354,7 @@ private fun ThemeCard(title: String, subtitle: String, selected: Boolean, skin: 
             .clickable(onClick = onClick).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SkinMiniPreview(skin, settings, Modifier.fillMaxWidth().height(96.dp))
+        BakedSkinPreview(skinId, plugin, settings, dark, Modifier.fillMaxWidth().height(96.dp))
         Text(tr(title), style = MaterialTheme.typography.titleSmall, color = if (selected) cs.onPrimaryContainer else cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (subtitle.isNotEmpty()) {
             Text(
@@ -381,9 +400,8 @@ internal fun ThemesPage(settings: KeyboardSettings, onNavigate: (SettingsPage) -
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         pair.forEach { (title, sub, skinId) ->
                             val plugin = plugins.firstOrNull { it.id == skinId }
-                            val skin = remember(plugin, settings.skinOptions, settings.userAccent, settings.colorAccentText, settings.keyOpacity, dark) { previewSkin(plugin, settings, dark) }
                             Box(Modifier.weight(1f)) {
-                                ThemeCard(title, sub, settings.skinPlugin == skinId, skin, settings) {
+                                ThemeCard(title, sub, settings.skinPlugin == skinId, skinId, plugin, dark, settings) {
                                     val d = DesignStyle.entries.firstOrNull { it.skin == skinId }
                                     if (d != null) d.apply(context) else ThemeEditor.apply(context, skinId)
                                 }

@@ -47,8 +47,8 @@ internal object PluginTrust {
     const val PREF_KEY = "plugin_trust_ack"
     const val TAPS_NEEDED = 5
 
-    /** Where "No" sends the user: the original project, whose releases hold the stable official build. */
-    const val OFFICIAL_URL = "https://github.com/kotlalipopus/Expressive-Keyboard/releases/latest"
+    /** Where "No" sends the user: this fork's releases, the same place the in-app updater reads. */
+    const val OFFICIAL_URL = "https://github.com/PythonEather/my-keyboard/releases/latest"
 }
 
 private val TrustBg = Color(0xFF140404)
