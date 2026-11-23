@@ -727,7 +727,7 @@ internal fun PanelBody(
         ActivePanel.GIF -> GifPanel(state, actions, settings, palette, font)
         ActivePanel.CLIPBOARD -> ClipboardPanel(state, actions, palette, font)
         ActivePanel.VOICE -> VoicePanel(state, actions, voice, palette, font, spec)
-        ActivePanel.PLUGINS -> PluginsPanel(state, actions, palette, font)
+        ActivePanel.PLUGINS -> PluginTrustGate(settings, scrollable = true) { PluginsPanel(state, actions, palette, font) }
         else -> KeyArea(state, lang, actions, settings, palette, font, popup, layer, glide)
     }
 }

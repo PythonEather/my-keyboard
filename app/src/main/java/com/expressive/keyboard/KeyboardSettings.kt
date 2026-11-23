@@ -214,6 +214,8 @@ data class KeyboardSettings(
     /** Reminder about plugins that use sensitive permissions (not changeable by plugins). */
     val securityReminder: Boolean = true,
     val securityReminderMin: Int = 4,
+    /** The "YOU ARE THE SECURITY" notice has been confirmed (5 taps); it is never shown again. */
+    val pluginTrustAck: Boolean = false,
     /** Plugins with the settings_layout permission may arrange the Settings home screen. */
     val pluginSettingsLayout: Boolean = true,
     // --- клавиши ---
@@ -581,6 +583,7 @@ object KeyboardPrefs {
             dynamicShadow = p.getBoolean("dynamic_shadow", false),
             securityReminder = p.getBoolean("security_reminder", true),
             securityReminderMin = p.getInt("security_reminder_min", 4).coerceIn(1, 1440),
+            pluginTrustAck = p.getBoolean(PluginTrust.PREF_KEY, false),
             pluginSettingsLayout = p.getBoolean("plugin_settings_layout", true),
             keyLabelScale = p.getFloat("key_label_scale", 1f).coerceIn(0.7f, 1.4f),
             fontWeight = p.getInt("font_weight", 700).coerceIn(300, 900),

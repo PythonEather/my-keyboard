@@ -391,7 +391,7 @@ internal fun SettingsPageScaffold(
                     SettingsPage.GESTURES -> TypingPage(settings, SettingsPage.GESTURES)
                     SettingsPage.CLIPBOARD -> TypingPage(settings, SettingsPage.CLIPBOARD)
                     SettingsPage.FEEDBACK -> FeedbackPage(settings)
-                    SettingsPage.PLUGINS -> PluginsPage(settings)
+                    SettingsPage.PLUGINS -> PluginTrustGate(settings, scrollable = false) { PluginsPage(settings) }
                     SettingsPage.BACKUP -> BackupPage()
                     SettingsPage.ABOUT -> AboutPage()
                 }
