@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.expressive.keyboard"
+        applicationId = "com.pythoneather.expressivekeyboardpro"
         minSdk = 26
         targetSdk = 35
         versionCode = 36
