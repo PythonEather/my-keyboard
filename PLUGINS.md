@@ -13,8 +13,8 @@ add its own panels, buttons, keys and suggestions, store data, use the network, 
 **draw and animate anything on top of the keyboard**, find out where each key is, "press" keys, and change the layout
 and the look on the fly. For example, you can make a character that walks over the keys and types (example below).
 The script runs in a sandbox: it has no access to Java or to other apps' files (each mod has its own folder, `kb.files`);
-anything that touches text, the network, links and AI needs a permission; and every call has a time limit (300 ms, loading — 2 s),
-so a stuck mod cannot freeze the keyboard. Errors and `console.log` output are shown in the plugin card ("Script log").
+anything that touches text, the network, links and AI needs a permission; and every script call has a time limit (300 ms by default, up to 2 s with `callBudgetMs`; loading — 2 s),
+so a stuck mod cannot freeze the keyboard. The limit is per call, not per frame: drawing does not run in the script (see below). Errors and `console.log` output are shown in the plugin card ("Script log").
 
 Scripts run on Rhino by default. To pick QuickJS for a particular mod, add
 `"scriptEngine": "quickjs"` to its manifest. The field works for `.json`, for the `@plugin` comment in `.js`
@@ -28,6 +28,34 @@ On the keyboard, plugins are opened with the 🧩 button on the toolbar (the gri
 **Exporting.** Every plugin card has an **Export plugin** button (it saves the plugin exactly as it is stored: JSON with its script and files)
 and, for mods with a script, an **Export script (.js)** button (the script with its manifest comment, ready to edit and import again).
 If you delete a plugin by accident, import the exported file with **Import from file** to get it back. Built-in plugins can be exported too.
+
+## What Expressive Keyboard Pro can do
+
+Plugins here are not limited to a few buttons, to Android 13+ shaders or to a 300 ms script. A short map of what exists
+(each feature has its own section below; `kb.supports(name)` tells a mod what the current phone can do):
+
+| Area | What it gives you | Android version |
+|---|---|---|
+| **GLSL layers** (`type: "gl"`) | Your own OpenGL ES 2.0 / 3.0 fragment **and vertex** shaders, meshes, depth buffer, 1–60 fps, own render thread. Full-screen effects and real 3D | **8+** (the app minimum) |
+| **AGSL shaders** (`type: "shader"`, `kb.postEffect`) | Shaders that run on the keyboard's own picture: distortion, refraction, hologram | 13+ only |
+| **GL batches** | Hundreds of rects, circles and lines in one draw call | 8+ |
+| **Retained groups, pan and zoom** | Send a big scene once, move the camera inside the keyboard with no script round trip | 8+ |
+| **Particles and liquid** | Up to 20,000 particles, up to 3,000 liquid ones, driven by the keyboard, not the script | 8+ |
+| **Own screen** | Fullscreen, landscape (`landscape`, `landscape-right`) or a floating panel for a mod: games, maps, tools | 8+ |
+| **Two script engines** | Rhino (default) or QuickJS (`"scriptEngine": "quickjs"`), same `kb.*` API, may run side by side | 8+ |
+| **Sensors, microphone, app, media** | Tilt, gyro, microphone level and bands, the app being typed in, now playing and player controls (each needs a permission) | 8+ |
+| **Settings, themes, skins** | Plugins can add skins, themes, layouts, icons, languages, dictionaries and arrange the Settings home screen (`settings_layout`) | 8+ |
+| **Dynamic shadow, static frosted glass** | Shadows that lean with the phone tilt, a background blurred once | 8+ |
+
+Three things people often get wrong:
+
+- **"Shaders need Android 13+."** Only AGSL does. GLSL layers are plain OpenGL ES and work on every Android version the app installs on.
+- **"Scripts are limited to 300 ms."** That is the default budget of *one script call*, and `callBudgetMs` raises it to 2000. Heavy
+  drawing never runs inside the script: GL layers render on their own thread, particles, batches and retained groups are drawn by the
+  keyboard, so a mod only sets parameters and the budget is almost never the limit.
+- **"It is the same as the official keyboard."** This is an independent fork with its own releases. It started from the original and adds
+  landscape full screen for mods, retained groups, host-side pan/zoom, GL batches, a faster GL layer, dynamic shadow, static frosted glass,
+  the `media` and `settings_layout` permissions and the security notice (the README has the full list).
 
 ## Common fields
 
@@ -75,7 +103,7 @@ A full example is in **Settings → Plugins and mods → Save mod example (.js)*
 | `language` | language code | — |
 | `clipboard` | the copied text | — *clipboard* |
 | `press` | `{ label, type }` — any key was pressed (`a`, `space`, `enter`, `shift`…) | — *read_text* |
-| `frame` | milliseconds since the previous frame | about 30 times per second while the keyboard is on screen — for animations |
+| `frame` | milliseconds since the previous frame | up to 60 times per second while the keyboard is on screen — for animations. A script whose frames are expensive is moved to 30 (or 15) by itself, so typing stays smooth |
 | `selection` | `{ start, end }` — the cursor or the selection moved | — *read_text* |
 | `pick` | `{ word }` — a suggestion was chosen | `false` — do not insert it. *read_text* |
 | `autocorrect` | `{ word, correction }` — the space is about to correct the word (`correction` may be `null`) | a string — your own correction; `false` — do not correct. *read_text* |
@@ -88,8 +116,8 @@ A full example is in **Settings → Plugins and mods → Save mod example (.js)*
 | `view` | `{ x, y, zoom }` | the camera was moved by a finger gesture (`kb.panZoom`); at most 10 times a second, and once more when the gesture ends |
 | `message` | `{ from, name, data }` | a message from another mod (`kb.broadcast`) |
 | `option` | `{ id, value }` | a mod setting changed, or a settings button or preset was pressed |
-| `pointer` | `{ type, x, y, pointer }`, `type` — `down`, `move`, `up` | a finger on the keyboard; the keys keep working as usual. Moves arrive up to 30 times per second. *read_text*: the coordinates show what is being typed |
-| `tilt` | `{ x, y, z }`, roughly from −1 to 1 | phone tilt, up to 30 times per second. *sensors* |
+| `pointer` | `{ type, x, y, pointer }`, `type` — `down`, `move`, `up` | a finger on the keyboard; the keys keep working as usual. Moves arrive up to 60 times per second. *read_text*: the coordinates show what is being typed |
+| `tilt` | `{ x, y, z }`, roughly from −1 to 1 | phone tilt, up to 60 times per second. *sensors* |
 | `gyro` | `{ x, y, z }`, rad/s | phone rotation. *sensors* |
 | `audio` | `{ level, bands }`: 0..1 and 8 bands from low to high | after `kb.audio.start()`, 20 times per second. *microphone* |
 | `app` | `{ package, name, color }`, `color` — the main color of the icon | a field in another app was opened. *app_info* |
@@ -250,6 +278,7 @@ The mod layer lies on top of the keys and does not get in the way of typing. Coo
 | `{ type: "text" }` | `x`, `y`, `text`, `size`, `color`, `bold`, `center` |
 | `{ type: "pixels" }` | Pixel art: `x`, `y`, `scale` (pixel size), `rows: ["..##..", …]`, `palette: { "#": "#D97757" }`, `flipX` |
 | `{ type: "image" }` | `x`, `y`, `w`, `h`, `src` (`data:image/…` or `kb.asset("pic.png")`), `flipX` |
+| `{ type: "gl" }` | A GLSL layer (OpenGL ES, any Android 8+): `frag`, `vert`, `uniforms`, `mesh`, `scale`, `fps`, `depth`, `clear`, `id` (see "GLSL layers") |
 | `{ type: "batch" }` | Many rects, circles and lines drawn in one OpenGL call: `shapes: [...]`, `key` (see "GL batches") |
 | `{ type: "group" }` | A retained set of elements: `key`, `x`, `y`, `scale`, `world` (see "Retained groups") |
 
@@ -282,7 +311,7 @@ kb.on("frame", function (dt) {
 ## Effects: particles, shaders, key tilt
 
 The script runs in an interpreter and cannot count thousands of objects per frame, so the keyboard does the heavy work itself:
-the mod only sets parameters. `kb.supports(name)` checks a capability: `shader`, `postEffect`, `labelBlur`, `sensors`, `microphone`, `media`, `mediaInfo`.
+the mod only sets parameters. `kb.supports(name)` checks a capability: `gl`, `batch`, `groups`, `panZoom`, `shader`, `postEffect`, `labelBlur`, `particles`, `keyEffects`, `pointer`, `sensors`, `microphone`, `media`, `mediaInfo`.
 
 ### Particles
 
@@ -315,9 +344,9 @@ kb.particles.set("water", { max: 1500, liquid: true, size: 7, color: "#664FC3F7"
 kb.particles.emit("water", { count: 1500, x: 0, y: 0, w: 360, h: 60 });
 ```
 
-### Shaders (Android 13+)
+### Shaders (AGSL, Android 13+)
 
-The language is AGSL: almost GLSL, but the entry point is `half4 main(float2 fragCoord)` and the types are `float2`, `half4`. On older Android versions the shader is
+For a shader that must work on every phone use a GLSL layer (next section). The language here is AGSL: almost GLSL, but the entry point is `half4 main(float2 fragCoord)` and the types are `float2`, `half4`. On older Android versions the shader is
 not drawn. A compile error goes to the mod's log, and the text can be obtained with `kb.shaderError(src)`.
 
 A `kb.overlay` and `kb.background` element: `{ type: "shader", src, x, y, w, h, uniforms: { ... }, alpha, rotation }`.
@@ -337,6 +366,68 @@ kb.postEffect({ src: `
     return content.eval(p);
   }` });
 ```
+
+### GLSL layers (`type: "gl"`, all Android versions)
+
+A `gl` element in `kb.overlay` or `kb.background` draws your own OpenGL ES shaders. It works on **Android 8+**, unlike AGSL. Each layer
+has its own render thread and OpenGL context, so a slow shader or a busy script does not slow down typing. Check with `kb.supports("gl")`.
+
+| Field | Description |
+|---|---|
+| `frag` | **Required.** The fragment shader source (up to 64,000 characters). Starting it with `#version 300 es` selects GLSL ES 3.00 (needs a phone with OpenGL ES 3.0; the keyboard says so in the log if not). Otherwise it is GLSL ES 1.00 and `precision mediump float;` is added for you if you did not write any |
+| `vert` | Optional vertex shader. Without it a full-screen quad is drawn with the attribute `aPos` (−1..1) and the varying `vUv` (0..1), which is all a fragment-only effect needs. In an ES 3.00 shader the names are `in vec2 aPos` / `out vec2 vUv` |
+| `mesh` | Optional geometry for your own vertex shader (see below) |
+| `uniforms` | `{ name: value }`: a number, a boolean, an array of numbers (`vec2`..`vec4`, or a whole `float[]`) or a color `"#RRGGBB"` / `"#AARRGGBB"` (into `vec4`) |
+| `x`, `y`, `w`, `h` | Where the layer is, in dp. Without `w` and `h` it covers the whole drawing area |
+| `scale` | Resolution of the render buffer, 0.1..1 (default 1). `0.5` draws a quarter of the pixels, which is cheap for soft effects |
+| `fps` | 1..60 (default 30) |
+| `depth` | `true` asks for a depth buffer (when the phone has none, the layer still draws and the log says so) |
+| `clear` | The color the buffer is cleared to before each frame (default transparent) |
+| `id` | A name for the layer. With it, `kb.glUniforms(id, { name: value })` changes uniforms without resending the list |
+| `alpha`, `rotation` | Like any element |
+
+These uniforms are filled in by the keyboard if the shader declares them: `float iTime` (seconds), `float iFrame`, `vec3 iResolution`
+(width and height of the buffer in px, then 1), `float iDensity`, `vec3 iTouch` (x and y in buffer px from the layer's top-left corner, and 1
+while a finger is down; it follows the finger by itself, no `pointer` handler needed), `vec3 iTilt` (from the motion sensor, only while the
+keyboard is open) and `float iAudio` (0..1, only for a mod with *microphone*, after `kb.audio.start()`). All other uniforms come from `uniforms` or
+`kb.glUniforms`.
+
+```js
+// A live, full-keyboard plasma under the keys. Works on any Android 8+.
+kb.background([{ type: "gl", id: "plasma", scale: 0.5, fps: 30, alpha: 0.6, uniforms: { tint: "#7C4DFF" }, frag: `
+  varying vec2 vUv;
+  uniform float iTime;
+  uniform vec4 tint;
+  void main() {
+    float v = sin(vUv.x * 10.0 + iTime) + sin(vUv.y * 8.0 - iTime * 1.3);
+    vec3 c = 0.5 + 0.5 * sin(v + vec3(0.0, 2.0, 4.0));
+    gl_FragColor = vec4(c * tint.rgb, 1.0);
+  }` }]);
+kb.glUniforms("plasma", { tint: "#00E5FF" });   // later: no redraw of the whole list
+```
+
+**Meshes and vertex shaders (3D).** `mesh` gives your vertex shader its data:
+
+```js
+mesh: {
+  mode: "triangles",                      // triangles (default), strip, fan, lines, lineStrip, points
+  attribs: {                              // up to 8 attributes; name = the `attribute` in your vertex shader
+    aPos: { size: 3, data: [ -0.5,-0.5,0,   0.5,-0.5,0,   0,0.5,0 ] },
+    aCol: { size: 3, data: [ 1,0,0,   0,1,0,   0,0,1 ] }
+  },
+  indices: [0, 1, 2],                     // optional
+  key: "tri"                              // optional: the keyboard keeps the mesh; later send { key: "tri" } with no attribs
+}
+```
+
+- A mesh may hold up to 1,000,000 numbers and 1,000,000 indices. Indices above 65535 need OpenGL ES 3 or the `OES_element_index_uint`
+  extension (almost every phone has one of the two).
+- The host keeps up to 32 meshes by `key`. Sending the same mesh again does not upload it to the GPU a second time.
+- Up to 4 GL layers per `kb.overlay` / `kb.background` list. `gl` and `batch` elements are not drawn inside groups or `canvas` panels.
+- A shader that does not read `iTime`, `iFrame`, `iTouch`, `iTilt` or `iAudio` is drawn once and then only when something changes.
+
+If the shader fails to compile or link, the reason goes to the mod's **Script log** and `kb.glError(fragSource)` returns it (or `null`).
+Reading the same uniform name in both stages with different precision is a common link error: declare it `highp` in both, or only in one stage.
 
 ### Key tilt and labels
 
