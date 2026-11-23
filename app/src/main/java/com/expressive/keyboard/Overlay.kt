@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -187,10 +188,22 @@ sealed interface OverlayItem {
         val depth: Boolean, val clear: Color, override val alpha: Float, override val rotation: Float,
         /** id слоя: по нему kb.glUniforms(id, {...}) меняет uniform без пересылки всего списка. */
         val id: String? = null,
-        val pluginId: String = ""
+        val pluginId: String = "",
+        /** Premultiplied alpha blending (used by { type: "batch" }): overlapping translucent shapes mix instead of replacing each other. */
+        val blend: Boolean = false
     ) : OverlayItem {
         val liveKey: String? get() = id?.let { GlSupport.liveKey(pluginId, it) }
     }
+
+    /**
+     * A set of elements sent once with kb.defineGroup(key, items) and drawn by reference. x, y, scale and rotation move the whole
+     * set; world: true also applies the camera of kb.panZoom() / kb.view(). Elements of type gl and batch inside a group are not drawn.
+     */
+    data class Group(
+        val key: String, val x: Float, val y: Float, val scale: Float, val world: Boolean,
+        override val alpha: Float, override val rotation: Float,
+        val pluginId: String = ""
+    ) : OverlayItem
 
     companion object {
         private fun f(o: Map<*, *>, k: String, def: Float) = (o[k] as? Number)?.toFloat()?.takeIf { !it.isNaN() } ?: def
@@ -253,6 +266,11 @@ sealed interface OverlayItem {
                         o["id"]?.toString()?.take(64)
                     )
                 }
+                "batch" -> GlBatch.parse(o, x, y, f(o, "w", 0f), f(o, "h", 0f), alpha, rot)
+                "group" -> {
+                    val key = o["key"]?.toString()?.take(64)?.takeIf { it.isNotBlank() } ?: return null
+                    Group(key, x, y, f(o, "scale", 1f).coerceIn(0.001f, 1000f), o["world"] == true, alpha, rot)
+                }
                 else -> null
             }
         }
@@ -279,9 +297,15 @@ internal fun BoxScope.ScriptOverlayLayer() {
     // мод попросил касания (kb.captureTouches): слой ловит их вместо клавиш — для игр и рисования
     val touch = if (capture) Modifier.pointerInput(zone) {
         awaitPointerEventScope {
+            val gesture = ViewGesture()
             while (true) {
                 val ev = awaitPointerEvent()
                 val d = density
+                // kb.panZoom: the keyboard keeps pinch (and, in "any" mode, drag) gestures for the camera and tells the script "cancel"
+                if (ScriptView.enabled && !gesture.onEvent(ev.changes, d, zx, zy) { p, id -> ScriptHost.touch("cancel", p.x, p.y, id) }) {
+                    ev.changes.forEach { it.consume() }
+                    continue
+                }
                 for (c in ev.changes) {
                     val type = when {
                         c.pressed && !c.previousPressed -> "down"
@@ -331,7 +355,7 @@ internal fun BoxScope.ScriptBackgroundLayer() {
 }
 
 /** Элементы kb.overlay (и холста на панели мода): координаты — в dp от угла области рисования. */
-internal fun DrawScope.drawOverlayItems(items: List<OverlayItem>, measurer: TextMeasurer, path: Path) {
+internal fun DrawScope.drawOverlayItems(items: List<OverlayItem>, measurer: TextMeasurer, path: Path, depth: Int = 0) {
         val d = density
         for (it in items) {
             when (it) {
@@ -389,6 +413,7 @@ internal fun DrawScope.drawOverlayItems(items: List<OverlayItem>, measurer: Text
                 is OverlayItem.Shader -> withItem(it, Offset((it.x + it.w / 2f) * d, (it.y + it.h / 2f) * d)) { drawShaderItem(it) }
                 // GL рисует собственный TextureView (см. GlItems), на холсте ему делать нечего
                 is OverlayItem.Gl -> Unit
+                is OverlayItem.Group -> drawGroup(it, measurer, path, depth)
                 is OverlayItem.Picture -> {
                     val tl = Offset(it.x * d, it.y * d)
                     val w = (it.w * d).roundToInt()
@@ -405,6 +430,38 @@ internal fun DrawScope.drawOverlayItems(items: List<OverlayItem>, measurer: Text
                 }
             }
         }
+}
+
+/** A retained group (kb.defineGroup): the stored elements drawn under the group's own transform and, for world groups, the camera. */
+private fun DrawScope.drawGroup(g: OverlayItem.Group, measurer: TextMeasurer, path: Path, depth: Int) {
+    if (depth >= 4) return
+    // reading the version makes this drawing run again when the group is redefined; the camera values are read below for the same reason
+    if (OverlayGroups.version < 0) return
+    val items = OverlayGroups.get(g.pluginId, g.key) ?: return
+    if (items.isEmpty()) return
+    val d = density
+    val world = g.world
+    val panX = if (world) ScriptView.panX else 0f
+    val panY = if (world) ScriptView.panY else 0f
+    val zoom = if (world) ScriptView.zoom else 1f
+    val layer = g.alpha < 0.999f
+    if (layer) {
+        val paint = androidx.compose.ui.graphics.Paint()
+        paint.alpha = g.alpha
+        drawContext.canvas.saveLayer(Rect(Offset.Zero, size), paint)
+    }
+    withTransform({
+        if (world) {
+            translate(panX * d, panY * d)
+            scale(zoom, zoom, Offset.Zero)
+        }
+        translate(g.x * d, g.y * d)
+        if (g.rotation != 0f) rotate(g.rotation, Offset.Zero)
+        if (g.scale != 1f) scale(g.scale, g.scale, Offset.Zero)
+    }) {
+        drawOverlayItems(items, measurer, path, depth + 1)
+    }
+    if (layer) drawContext.canvas.restore()
 }
 
 /**

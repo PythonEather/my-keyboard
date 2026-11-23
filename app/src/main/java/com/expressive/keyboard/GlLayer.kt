@@ -587,7 +587,12 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
         GLES20.glClearColor(item.clear.red * a, item.clear.green * a, item.clear.blue * a, a)
         val useDepth = item.depth && depthOk
         if (useDepth) GLES20.glEnable(GLES20.GL_DEPTH_TEST) else GLES20.glDisable(GLES20.GL_DEPTH_TEST)
-        GLES20.glDisable(GLES20.GL_BLEND)
+        if (item.blend) {
+            GLES20.glEnable(GLES20.GL_BLEND)
+            GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+        } else {
+            GLES20.glDisable(GLES20.GL_BLEND)
+        }
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or if (useDepth) GLES20.GL_DEPTH_BUFFER_BIT else 0)
 
         if (!ensureProgram(item)) animated = false

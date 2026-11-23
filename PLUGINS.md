@@ -84,7 +84,8 @@ A full example is in **Settings → Plugins and mods → Save mod example (.js)*
 | `panel` | `keyboard`, `emoji`, `clipboard`, `voice`, `plugins`, `translate`, `script_input`… | a panel was opened |
 | `shift` | `off`, `single`, `caps` | Shift changed |
 | `device` | `kb.device()` | screen rotation, system theme change |
-| `touch` | `{ type, x, y, pointer }`, `type` — `down`, `move`, `up` | touches on the keyboard while `kb.captureTouches()` is on |
+| `touch` | `{ type, x, y, wx, wy, pointer }`, `type` — `down`, `move`, `up`, `cancel`; `wx`, `wy` — the same point in world coordinates of the camera (see `kb.panZoom`) | touches on the keyboard while `kb.captureTouches()` is on |
+| `view` | `{ x, y, zoom }` | the camera was moved by a finger gesture (`kb.panZoom`); at most 10 times a second, and once more when the gesture ends |
 | `message` | `{ from, name, data }` | a message from another mod (`kb.broadcast`) |
 | `option` | `{ id, value }` | a mod setting changed, or a settings button or preset was pressed |
 | `pointer` | `{ type, x, y, pointer }`, `type` — `down`, `move`, `up` | a finger on the keyboard; the keys keep working as usual. Moves arrive up to 30 times per second. *read_text*: the coordinates show what is being typed |
@@ -232,6 +233,10 @@ The mod layer lies on top of the keys and does not get in the way of typing. Coo
 | `kb.setLayout(id, rows)` / `kb.setLayout(id, null)` | Your own layout on the fly (the row format is the same as in `layouts`) / go back to the normal one |
 | `kb.setSkin({...})` / `kb.setSkin(null)` | A skin on the fly (the format is the same as `skin`) / remove it |
 | `kb.captureTouches(true/false)` | The mod layer catches touches (the `touch` event) and the keys are not pressed meanwhile — for games and finger drawing. A ✕ is always present in the corner of the keyboard: it releases the capture, and the mod gets `touch` with `type: "cancel"`. Second argument: `kb.captureTouches(true, { zone: {x, y, w, h}, exit: "topEnd" })` — `zone` (dp from the keyboard corner) catches touches only inside itself, the rest go to the keys; `exit` — the corner of the ✕ button: `topEnd`, `topStart`, `bottomEnd`, `bottomStart` |
+| `kb.defineGroup(key, items)` / `kb.removeGroup(key)` | Retained group: send a set of elements **once**, then draw it by reference with `{ type: "group", key }` in `kb.overlay` / `kb.background` (see "Retained groups"). Returns `false` if the key is empty |
+| `kb.view()` / `kb.view({ x, y, zoom })` | Reads / sets the camera of `world` groups (`x`, `y` in dp; screen = world × `zoom` + `x`, `y`). Returns `{ x, y, zoom }` |
+| `kb.toWorld(x, y)` / `kb.toScreen(x, y)` | Converts a point between keyboard dp and world coordinates: `{ x, y }` |
+| `kb.panZoom(options)` / `kb.panZoom(false)` | The keyboard itself pans and zooms the camera from finger gestures, with no script round trip (see "Pan and zoom"). Works while `kb.captureTouches` is on |
 | `kb.glUniforms(id, {name: value})` | Changes a uniform of a GL layer (`type: "gl"` with an `id`) without resending the whole `kb.overlay` list: faster and with no UI redraw. A new `kb.overlay` resets these values. Returns `false` if the arguments did not fit |
 
 `kb.overlay` elements:
@@ -244,6 +249,8 @@ The mod layer lies on top of the keys and does not get in the way of typing. Coo
 | `{ type: "text" }` | `x`, `y`, `text`, `size`, `color`, `bold`, `center` |
 | `{ type: "pixels" }` | Pixel art: `x`, `y`, `scale` (pixel size), `rows: ["..##..", …]`, `palette: { "#": "#D97757" }`, `flipX` |
 | `{ type: "image" }` | `x`, `y`, `w`, `h`, `src` (`data:image/…` or `kb.asset("pic.png")`), `flipX` |
+| `{ type: "batch" }` | Many rects, circles and lines drawn in one OpenGL call: `shapes: [...]`, `key` (see "GL batches") |
+| `{ type: "group" }` | A retained set of elements: `key`, `x`, `y`, `scale`, `world` (see "Retained groups") |
 
 All elements have `alpha` (0..1) and `rotation` (degrees).
 
@@ -858,6 +865,65 @@ A key of your own is an object: `{ "label": "→", "output": "->", "weight": 1.2
 A mod key is `{ "label": "λ", "action": "name" }`: it calls the command registered with `kb.addCommand("name", fn)`.
 The row height is an object `{ "rowHeight": 0.8 }` at the start of the row.
 
+## Retained groups, pan/zoom and GL batches
+
+These three features exist for mods that draw hundreds of shapes per frame (maps, boards, games). Check them with
+`kb.supports("groups")`, `kb.supports("panZoom")` and `kb.supports("batch")`.
+
+### Retained groups
+
+Without groups a mod resends every shape in every `kb.overlay` call. With a group the shapes cross the bridge once:
+
+```js
+kb.defineGroup("map", mapShapes);            // parsed once, kept by the keyboard (up to 64 groups per mod)
+kb.overlay([
+  { type: "group", key: "map", world: true },  // drawn from the stored copy
+  { type: "text", x: 8, y: 8, text: "Score " + score }
+]);
+```
+
+A group takes `x`, `y` (dp), `scale`, `rotation` and `alpha` and moves the whole set. `world: true` also applies the camera
+(see below). Calling `kb.defineGroup` again with the same key replaces the content and redraws by itself, so you do not need
+to call `kb.overlay` again. A group may contain other groups (up to 4 levels). `gl` and `batch` elements inside a group are not
+drawn. Groups are cleared when the plugins reload.
+
+### Pan and zoom
+
+```js
+kb.captureTouches(true);
+kb.panZoom({ min: 0.5, max: 6, mode: "two" });   // or kb.panZoom(false)
+kb.on("view", function (v) { /* { x, y, zoom } — at most 10 times a second */ });
+kb.on("touch", function (t) { /* t.wx, t.wy: the touch in world coordinates */ });
+```
+
+- `mode: "two"` (default): two fingers pinch to zoom and pan; one finger still goes to your `touch` handler.
+- `mode: "any"`: one finger also drags the view. A touch that moves less than 8 dp is still a normal tap for your script.
+- When the keyboard takes over a gesture, your script receives `touch` with `type: "cancel"` for the pointers it already got, so
+  drop whatever you were doing with them.
+- Only groups with `world: true` follow the camera. Everything else stays on the screen. `kb.view({ x, y, zoom })` moves the camera
+  from the script (for example to centre on a place); `kb.toWorld` and `kb.toScreen` convert points.
+
+### GL batches
+
+`{ type: "batch", shapes: [...] }` turns many `rect`, `circle`, `oval` and `line` elements into one OpenGL mesh and draws it with a
+single call. It is meant for 100+ simple shapes per frame (Compose would make one draw call for each).
+
+```js
+kb.overlay([{ type: "batch", shapes: cells.map(function (c) {
+  return { type: "rect", x: c.x, y: c.y, w: 8, h: 8, color: c.color, radius: 2 };
+}) }]);
+```
+
+- The shapes use the same fields as the normal elements. Translucent colours blend normally. `alpha` and `rotation` on the batch itself
+  work like on any element. Optional `x`, `y`, `w`, `h` limit the batch to a rectangle; the shapes are then relative to it.
+- `fill: true` lines are drawn as a fan from the centre: right for convex and star-shaped polygons only.
+- `key`: `{ type: "batch", key: "terrain", shapes: [...] }` stores the mesh; later `{ type: "batch", key: "terrain" }` (no `shapes`) draws it
+  again without sending the shapes. The mesh cache is shared with GL meshes (32 entries).
+- No text, pixel art or images in a batch: keep those as normal elements. A batch is an OpenGL layer, so it is drawn **under** the normal
+  elements of the same list, counts toward the 4 GL layers per list, and is not drawn inside `canvas` panels or groups.
+- Limits: 6000 shapes and 400,000 vertices per batch. The edges are not anti-aliased, so very small circles look more angular
+  than in the normal drawing.
+
 ## Performance notes for mod authors
 
 - A GL layer (`type: "gl"`) whose shader does not read `iTime`, `iFrame`, `iTouch`, `iTilt` or `iAudio` is drawn once and then only
@@ -866,5 +932,7 @@ The row height is an object `{ "rowHeight": 0.8 }` at the start of the row.
 - GL meshes may use more than 65,536 vertices: indices above 65535 are drawn as 32-bit indices (always on OpenGL ES 3, with the
   `OES_element_index_uint` extension on ES 2). The host keeps up to 32 meshes by key, so `{ key }` resends are needed less often.
 - Text in `kb.overlay` is measured through a 256-entry layout cache, so a lot of repeated text is cheap.
+- For hundreds of shapes: send them once with `kb.defineGroup`, let `kb.panZoom` move the camera inside the keyboard, and draw plain
+  rects, circles and lines through `{ type: "batch" }`.
 - The **Script log** card shows a `gl:` line with the number of frames drawn, the number of skipped idle frames, and the average and
   maximum CPU time per frame.

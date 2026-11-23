@@ -178,6 +178,8 @@ private class Mod(val plugin: KeyboardPlugin) {
     /** Зона перехвата {x, y, w, h} в dp (null — вся клавиатура) и угол кнопки ✕. */
     var touchZone: FloatArray? = null
     var touchExit = "topEnd"
+    /** Мод включил kb.panZoom: клавиатура сама двигает и масштабирует группы world: true. */
+    var panZoom = false
     /** Когда мод последний раз не уложился во время: старые штрафы за медленные вызовы сгорают. */
     var lastTimeoutAt = 0L
     /** Эффекты клавиш (kb.keyEffects). */
@@ -484,6 +486,8 @@ object ScriptHost {
             bridge?.scriptPrompt(false)
         }
         touchCapture = false
+        ScriptView.reset()
+        OverlayGroups.clear()
         screenOwner = null
         screenMode = null
         screenTurn = 0
@@ -583,10 +587,12 @@ object ScriptHost {
                     g.liveKey?.let { k -> GlSupport.dropLive(k) }
                     watchGl(m.plugin.id, g.frag)
                     g
-                } else parsed
+                } else if (parsed is OverlayItem.Group) parsed.copy(pluginId = m.plugin.id) else parsed
             } ?: null.also {
                 val o = v as? Map<*, *>
                 if (o?.get("type") == "gl") log(m.plugin.id, "✕ gl: frag is required (the fragment shader source)")
+                if (o?.get("type") == "batch") log(m.plugin.id, "✕ batch: needs shapes (rect, circle, oval or line elements) or the key of a batch sent before")
+                if (o?.get("type") == "group") log(m.plugin.id, "✕ group: key is required (the name given to kb.defineGroup)")
                 if (o?.get("type") == "shader") {
                     val src = o["src"]?.toString().orEmpty()
                     log(m.plugin.id, "✕ shader: " + (ModShaders.error(src) ?: "needs Android 13 or newer"))
@@ -817,9 +823,34 @@ object ScriptHost {
             if (!m.touches) continue
             val hs = m.handlers["touch"] ?: continue
             for (h in hs.toList()) exec(m, CALL_BUDGET_MS, "touch") {
-                m.runtime.call(h, arrayOf(mapOf("type" to type, "x" to x, "y" to y, "pointer" to pointer)))
+                // wx, wy: the same point in world coordinates of kb.panZoom / kb.view (equal to x, y while the camera is not moved)
+                val z = ScriptView.zoom.toDouble()
+                m.runtime.call(
+                    h,
+                    arrayOf(
+                        mapOf(
+                            "type" to type, "x" to x, "y" to y, "pointer" to pointer,
+                            "wx" to (x - ScriptView.panX) / z, "wy" to (y - ScriptView.panY) / z
+                        )
+                    )
+                )
             }
         }
+    }
+
+    private var lastViewEvent = 0L
+
+    /** The camera moved by a finger gesture: the "view" event goes out at most 10 times a second, and once more when the gesture ends. */
+    fun viewChanged(ended: Boolean) {
+        val now = SystemClock.uptimeMillis()
+        if (!ended && now - lastViewEvent < 100L) return
+        lastViewEvent = now
+        if (!has("view")) return
+        emit("view", ScriptView.toMap())
+    }
+
+    private fun publishPanZoom() {
+        ScriptView.enabled = mods.values.any { it.panZoom }
     }
 
     private fun publishTouches() {
@@ -1210,6 +1241,42 @@ object ScriptHost {
             Unit
         }
         def(kb, "clearOverlay") { _ -> m.overlay = emptyList(); publishOverlay(); Unit }
+        // retained groups: send a set of elements once, then draw it with { type: "group", key } in kb.overlay / kb.background
+        def(kb, "defineGroup") { a ->
+            val key = str(a, 0).take(64)
+            if (key.isBlank()) return@def false
+            OverlayGroups.put(id, key, parseItems(m, fromJs(a.getOrNull(1))))
+            true
+        }
+        def(kb, "removeGroup") { a -> OverlayGroups.remove(id, str(a, 0).take(64)) }
+        // the camera of world groups: kb.view() reads it, kb.view({ x, y, zoom }) sets it (x, y in dp), kb.panZoom() lets fingers move it
+        def(kb, "view") { a ->
+            val o = opts(a, 0)
+            if (o.isNotEmpty()) {
+                ScriptView.set((o["x"] as? Number)?.toFloat(), (o["y"] as? Number)?.toFloat(), (o["zoom"] as? Number)?.toFloat())
+            }
+            ScriptView.toMap()
+        }
+        def(kb, "toWorld") { a ->
+            val z = ScriptView.zoom.toDouble()
+            mapOf("x" to (num(a, 0, 0.0) - ScriptView.panX) / z, "y" to (num(a, 1, 0.0) - ScriptView.panY) / z)
+        }
+        def(kb, "toScreen") { a ->
+            val z = ScriptView.zoom.toDouble()
+            mapOf("x" to num(a, 0, 0.0) * z + ScriptView.panX, "y" to num(a, 1, 0.0) * z + ScriptView.panY)
+        }
+        // kb.panZoom({ min: 0.5, max: 6, mode: "two" | "any" }) / kb.panZoom(false); works while kb.captureTouches is on
+        def(kb, "panZoom") { a ->
+            val first = fromJs(a.getOrNull(0))
+            m.panZoom = !(first is Boolean && !first)
+            val o = (first as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: opts(a, 1)
+            (o["min"] as? Number)?.toFloat()?.takeIf { it > 0f }?.let { ScriptView.minZoom = it }
+            (o["max"] as? Number)?.toFloat()?.takeIf { it > 0f }?.let { ScriptView.maxZoom = it }
+            (o["mode"]?.toString())?.takeIf { it == "two" || it == "any" }?.let { ScriptView.mode = it }
+            if (ScriptView.maxZoom < ScriptView.minZoom) ScriptView.maxZoom = ScriptView.minZoom
+            publishPanZoom()
+            Unit
+        }
         // то же, но под клавишами: фон, волны, частицы — клавиши остаются сверху
         def(kb, "background") { a ->
             m.background = parseItems(m, fromJs(a.getOrNull(0)))
@@ -1260,7 +1327,7 @@ object ScriptHost {
         def(kb, "supports") { a ->
             when (str(a, 0)) {
                 "shader", "postEffect" -> ModShaders.supported
-                "gl" -> true
+                "gl", "batch", "groups", "panZoom" -> true
                 "labelBlur" -> android.os.Build.VERSION.SDK_INT >= 31
                 "particles", "keyEffects", "pointer" -> true
                 "sensors" -> ModSensors.available(ctx)
@@ -1944,7 +2011,9 @@ object ScriptHost {
             "tabs", "chips" -> UiNode.Tabs(items("items"), o["selected"], call(m, o["onClick"]))
             "canvas" -> UiNode.Canvas(
                 f("height", 120f).coerceIn(8f, 600f),
-                (o["items"] as? List<*>)?.take(4000)?.mapNotNull { OverlayItem.parse(it) } ?: emptyList(),
+                (o["items"] as? List<*>)?.take(4000)?.mapNotNull { v ->
+                    OverlayItem.parse(v)?.let { p -> if (p is OverlayItem.Group) p.copy(pluginId = m.plugin.id) else p }
+                } ?: emptyList(),
                 call(m, o["onTap"])
             )
             "scroll" -> UiNode.Scroll(kids(), o["horizontal"] == true, f("height", 0f).coerceIn(0f, 800f))
