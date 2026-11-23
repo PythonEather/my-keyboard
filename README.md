@@ -1,4 +1,19 @@
-# Expressive Keyboard
+# Expressive Keyboard Pro
+
+> **This is an independent fork, not the original project.** It is based on
+> [kotlalipopus/Expressive-Keyboard](https://github.com/kotlalipopus/Expressive-Keyboard) (MIT) and is maintained
+> separately by [PythonEather](https://github.com/PythonEather). It has its own releases, version numbers and changes.
+> Bugs found here should be reported here, not to the original author.
+
+### What is different from the original
+
+- Renamed to **Expressive Keyboard Pro**
+- Landscape full-screen mode for mods (`"display": "landscape"`)
+- Import and export of custom animations; export of plugins (JSON and script)
+- `PLUGINS.md` and script log messages in English
+- Faster GL layer and QuickJS (idle frames skipped, uniform caching, 32-bit mesh indices)
+- Mod API additions: retained groups, host-side pan/zoom, GL shape batches
+
 
 An Android keyboard built with Kotlin, Jetpack Compose and the Material 3 Expressive components
 (`androidx.compose.material3` 1.5): `MaterialExpressiveTheme` with the expressive motion scheme,
@@ -14,7 +29,7 @@ Highly customizable and extensible with plugins and JavaScript mods.
 
 ## Download
 
-Get the latest APK from [Releases](https://github.com/kotlalipopus/Expressive-Keyboard/releases/latest).
+Get the latest APK from [Releases](https://github.com/PythonEather/my-keyboard/releases/latest).
 
 Requires Android 8.0 or newer.
 
@@ -36,9 +51,9 @@ Requires Android 8.0 or newer.
 
 ## Installation
 
-1. Download and install the APK from [Releases](https://github.com/kotlalipopus/Expressive-Keyboard/releases/latest).
+1. Download and install the APK from [Releases](https://github.com/PythonEather/my-keyboard/releases/latest).
 2. Open the app and enable the keyboard in system settings.
-3. Select Expressive Keyboard as your input method.
+3. Select Expressive Keyboard Pro as your input method.
 
 ## Permissions
 
@@ -62,8 +77,8 @@ You need Android Studio (or JDK 17 and Android SDK 35). The Expressive APIs come
 `material3:1.5.0-alpha13`, the newest version that still builds with compileSdk 35 and AGP 8.7.
 
 ```bash
-git clone https://github.com/kotlalipopus/Expressive-Keyboard.git
-cd Expressive-Keyboard
+git clone https://github.com/PythonEather/my-keyboard.git
+cd my-keyboard
 ./gradlew assembleDebug
 ```
 

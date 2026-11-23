@@ -39,7 +39,7 @@ import java.net.URL
 data class UpdateInfo(val version: String, val notes: String, val apkUrl: String, val size: Long, val page: String)
 
 object Updater {
-    private const val REPO = "kotlalipopus/Expressive-Keyboard"
+    private const val REPO = "PythonEather/my-keyboard"
     private const val PREF_AUTO = "auto_update_check"
 
     /** Найденное обновление (null — его нет или ещё не проверяли). */
