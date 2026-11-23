@@ -323,7 +323,10 @@ data class KeyboardPlugin(
     val scriptEngine: PluginScriptEngine = PluginScriptEngine.RHINO,
     /** Сколько мс даётся одному вызову скрипта (манифест: "callBudgetMs", 300..2000). */
     val callBudgetMs: Int = 300,
-    /** Свой экран мода (манифест: "display"): "fullscreen" — на весь экран, "floating" — плавающая панель. Одно из двух. */
+    /**
+     * Свой экран мода (манифест: "display"): "fullscreen" — на весь экран, "floating" — плавающая панель,
+     * "landscape" / "landscape-right" — на весь экран в альбомной ориентации (на портретном экране картинка повёрнута на 90°).
+     */
     val display: String? = null
 ) {
     val usesNetwork: Boolean get() = "network" in permissions && (actions.any { it.type == PluginActionType.HTTP } || script != null)
@@ -369,36 +372,36 @@ object PluginParser {
     fun parse(raw: String, builtIn: Boolean): KeyboardPlugin {
         val o = JSONObject(raw)
         val id = o.optString("id").trim()
-        require(ID.matches(id)) { "Поле id: 2–64 символа из A-Z, a-z, 0-9, . _ -" }
+        require(ID.matches(id)) { "Field id: 2–64 characters from A-Z, a-z, 0-9, . _ -" }
         val name = o.optString("name").trim()
-        require(name.isNotEmpty()) { "Нужно поле name" }
+        require(name.isNotEmpty()) { "The name field is required" }
         val perms = o.optJSONArray("permissions")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() } ?: emptySet()
 
         val actions = ArrayList<PluginAction>()
         o.optJSONArray("actions")?.let { arr ->
-            require(arr.length() <= 64) { "Не больше 64 действий" }
+            require(arr.length() <= 64) { "At most 64 actions" }
             for (i in 0 until arr.length()) {
                 val a = arr.getJSONObject(i)
                 val title = a.optString("title").trim()
-                require(title.isNotEmpty()) { "Действие #${i + 1}: нужно поле title" }
+                require(title.isNotEmpty()) { "Action #${i + 1}: the title field is required" }
                 val type = when (a.optString("type").lowercase()) {
                     "insert" -> PluginActionType.INSERT
                     "transform" -> PluginActionType.TRANSFORM
                     "key" -> PluginActionType.KEY
                     "http" -> PluginActionType.HTTP
-                    else -> throw IllegalArgumentException("Действие «$title»: type = insert | transform | key | http")
+                    else -> throw IllegalArgumentException("Action \"$title\": type = insert | transform | key | http")
                 }
                 val transform = a.optString("transform").lowercase()
-                if (type == PluginActionType.TRANSFORM) require(transform in TRANSFORMS) { "«$title»: неизвестное преобразование $transform" }
+                if (type == PluginActionType.TRANSFORM) require(transform in TRANSFORMS) { "\"$title\": unknown transform $transform" }
                 if (transform == "regex") runCatching { Regex(a.optString("pattern")) }.getOrElse {
-                    throw IllegalArgumentException("«$title»: неверное регулярное выражение")
+                    throw IllegalArgumentException("\"$title\": invalid regular expression")
                 }
                 val key = a.optString("key").lowercase()
-                if (type == PluginActionType.KEY) require(key in KEYS) { "«$title»: неизвестная клавиша $key" }
+                if (type == PluginActionType.KEY) require(key in KEYS) { "\"$title\": unknown key $key" }
                 val url = a.optString("url").trim()
                 if (type == PluginActionType.HTTP) {
-                    require("network" in perms) { "«$title»: для http нужно \"permissions\": [\"network\"]" }
-                    require(url.startsWith("https://")) { "«$title»: url должен начинаться с https://" }
+                    require("network" in perms) { "\"$title\": http needs \"permissions\": [\"network\"]" }
+                    require(url.startsWith("https://")) { "\"$title\": url must start with https://" }
                 }
                 val headers = HashMap<String, String>()
                 a.optJSONObject("headers")?.let { h -> h.keys().forEach { k -> headers[k] = h.optString(k) } }
@@ -459,7 +462,7 @@ object PluginParser {
         val settings = LinkedHashMap<String, Any>()
         o.optJSONObject("settings")?.let { s ->
             s.keys().forEach { k ->
-                require(k in KeyboardPrefs.KEY_TYPES) { "settings: неизвестный ключ «$k»" }
+                require(k in KeyboardPrefs.KEY_TYPES) { "settings: unknown key \"$k\"" }
                 s.opt(k)?.takeIf { it != JSONObject.NULL }?.let { settings[k] = it }
             }
         }
@@ -467,9 +470,9 @@ object PluginParser {
         val layouts = LinkedHashMap<String, List<KeyRow>>()
         o.optJSONObject("layouts")?.let { l ->
             l.keys().forEach { lid ->
-                require(lid in LAYOUT_IDS || LANG_ID.matches(lid)) { "layouts: «$lid» — код языка (ru, en, de…), symbols или symbols2" }
+                require(lid in LAYOUT_IDS || LANG_ID.matches(lid)) { "layouts: \"$lid\" must be a language code (ru, en, de…), symbols or symbols2" }
                 val rows = l.getJSONArray(lid)
-                require(rows.length() in 1..8) { "layouts.$lid: от 1 до 8 рядов" }
+                require(rows.length() in 1..8) { "layouts.$lid: from 1 to 8 rows" }
                 layouts[lid] = (0 until rows.length()).map { KeyboardLayouts.parseRow(rows.getJSONArray(it), lid !in LAYOUT_IDS, id) }
                     .filter { it.keys.isNotEmpty() }
             }
@@ -480,7 +483,7 @@ object PluginParser {
             is JSONArray -> (0 until s.length()).joinToString("\n") { s.optString(it) }
             else -> null
         }?.takeIf { it.isNotBlank() }
-        require((script?.length ?: 0) <= 2_000_000) { "script: больше 2 МБ" }
+        require((script?.length ?: 0) <= 2_000_000) { "script: larger than 2 MB" }
 
         val files = HashMap<String, String>()
         o.optJSONObject("files")?.let { f -> f.keys().forEach { k -> files[k] = f.optString(k) } }
@@ -520,7 +523,7 @@ object PluginParser {
                 settings.isNotEmpty() || layouts.isNotEmpty() || variants.isNotEmpty() || script != null ||
                 icons.isNotEmpty() || languages.isNotEmpty() || dictionary.isNotEmpty()
         ) {
-            "Плагин пустой: нужны script, actions, shortcuts, symbols, theme, skin, settings, layouts, variants, icons, languages или dictionary"
+            "The plugin is empty: it needs script, actions, shortcuts, symbols, theme, skin, settings, layouts, variants, icons, languages or dictionary"
         }
         val scriptEngine = when (o.optString("scriptEngine", "rhino")) {
             "rhino" -> PluginScriptEngine.RHINO
@@ -529,7 +532,9 @@ object PluginParser {
         }
         val callBudget = o.optInt("callBudgetMs", 300).coerceIn(300, 2000)
         val display = o.optString("display", "").trim()
-        require(display.isEmpty() || display == "fullscreen" || display == "floating") { "display: expected fullscreen or floating" }
+        require(display.isEmpty() || display == "fullscreen" || display == "floating" || display == "landscape" || display == "landscape-right") {
+            "display: expected fullscreen, landscape, landscape-right or floating"
+        }
         return KeyboardPlugin(
             id = id,
             name = name.take(40),
@@ -634,7 +639,7 @@ object PluginParser {
      * ```
      */
     fun jsToJson(source: String): String {
-        val m = JS_MANIFEST.find(source) ?: throw IllegalArgumentException("В начале .js нужен комментарий /* @plugin { \"id\": …, \"name\": … } */")
+        val m = JS_MANIFEST.find(source) ?: throw IllegalArgumentException("A .js mod must start with a comment like /* @plugin { \"id\": …, \"name\": … } */")
         val o = JSONObject(m.groupValues[1].trim())
         o.put("script", source)
         return o.toString()
@@ -649,10 +654,10 @@ object PluginParser {
                 val e = zin.nextEntry ?: break
                 if (e.isDirectory) continue
                 val name = e.name.replace('\\', '/').trimStart('/')
-                require(!name.contains("..")) { "Недопустимый путь в архиве: $name" }
+                require(!name.contains("..")) { "Invalid path in the archive: $name" }
                 val data = zin.readBytes()
                 total += data.size
-                require(total <= 8L * 1024 * 1024) { "Архив больше 8 МБ после распаковки" }
+                require(total <= 8L * 1024 * 1024) { "The archive is larger than 8 MB after unpacking" }
                 entries[name] = data
             }
         }
@@ -660,7 +665,7 @@ object PluginParser {
         val prefix = entries.keys.map { it.substringBefore('/', "") }.distinct().singleOrNull()?.takeIf { p -> p.isNotEmpty() && entries.keys.all { it.startsWith("$p/") } }
         val files = if (prefix != null) entries.mapKeys { it.key.removePrefix("$prefix/") } else entries
         val manifest = (files["plugin.json"] ?: files["manifest.json"])?.toString(Charsets.UTF_8)
-            ?: throw IllegalArgumentException("В архиве нет plugin.json")
+            ?: throw IllegalArgumentException("The archive has no plugin.json")
         val o = JSONObject(manifest.removePrefix("﻿"))
         val main = o.optString("main", "main.js")
         files[main]?.let { if (!o.has("script")) o.put("script", it.toString(Charsets.UTF_8)) }
@@ -857,7 +862,7 @@ object PluginHttp {
                 is JSONObject -> n.opt(seg)
                 is JSONArray -> seg.toIntOrNull()?.let { n.opt(it) }
                 else -> null
-            } ?: throw IllegalStateException("В ответе нет «$path»")
+            } ?: throw IllegalStateException("The response has no \"$path\"")
         }
         return node.toString()
     }
@@ -865,7 +870,7 @@ object PluginHttp {
     suspend fun run(a: PluginAction, text: String, clipboard: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val url = PluginTemplates.expand(a.url, text, clipboard, urlEncode = true)
-            require(url.startsWith("https://")) { "Разрешены только https-запросы" }
+            require(url.startsWith("https://")) { "Only https requests are allowed" }
             val conn = URL(url).openConnection() as HttpURLConnection
             try {
                 conn.connectTimeout = 8000
@@ -879,7 +884,7 @@ object PluginHttp {
                     conn.outputStream.use { it.write(PluginTemplates.expand(a.body, text, clipboard).toByteArray()) }
                 }
                 val code = conn.responseCode
-                if (code !in 200..299) throw IllegalStateException("Сервер ответил $code")
+                if (code !in 200..299) throw IllegalStateException("The server answered $code")
                 val raw = conn.inputStream.bufferedReader().use { r ->
                     val buf = CharArray(64 * 1024)
                     val n = r.read(buf)
@@ -1049,10 +1054,10 @@ object PluginRepository {
                 val n = input.read(buf)
                 if (n < 0) break
                 out.write(buf, 0, n)
-                require(out.size() <= MAX_FILE) { "Файл больше 8 МБ" }
+                require(out.size() <= MAX_FILE) { "The file is larger than 8 MB" }
             }
             out.toByteArray()
-        } ?: throw IllegalStateException("Не удалось открыть файл")
+        } ?: throw IllegalStateException("Could not open the file")
         // .zip начинается с «PK»
         if (bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()) {
             importText(app, PluginParser.zipToJson(bytes)).getOrThrow()
@@ -1065,7 +1070,7 @@ object PluginRepository {
         val clean = raw.removePrefix("﻿").trim()
         val json = if (clean.startsWith("{")) clean else PluginParser.jsToJson(clean)
         val plugin = PluginParser.parse(json, false)
-        require(plugins.none { it.builtIn && it.id == plugin.id }) { "id «${plugin.id}» занят встроенным плагином" }
+        require(plugins.none { it.builtIn && it.id == plugin.id }) { "id \"${plugin.id}\" is taken by a built-in plugin" }
         val dir = File(app.filesDir, DIR).apply { mkdirs() }
         File(dir, "${plugin.id}.json").writeText(json)
         if (plugin.id in disabled) setEnabled(app, plugin.id, true)
@@ -1077,6 +1082,41 @@ object PluginRepository {
         val app = context.applicationContext
         File(File(app.filesDir, DIR), "$id.json").delete()
         reload(app)
+    }
+
+    private val SCRIPT_HEAD = Regex("^\\s*/\\*\\s*@plugin")
+
+    /**
+     * The plugin exactly as it is stored: the installed JSON for imported plugins (scripts and zip files included),
+     * the bundled file for built-in ones. Returns the file name and its text, or null if nothing is found.
+     * Importing this text again restores the plugin, even after the original file is gone.
+     */
+    fun exportSource(context: Context, p: KeyboardPlugin): Pair<String, String>? {
+        val app = context.applicationContext
+        if (!p.builtIn) {
+            val stored = File(File(app.filesDir, DIR), "${p.id}.json")
+            if (stored.exists()) return runCatching { "${p.id}.json" to stored.readText() }.getOrNull()
+        }
+        val names = runCatching { app.assets.list(DIR).orEmpty() }.getOrDefault(emptyArray()).sorted()
+        for (f in names) {
+            if (!f.endsWith(".json") && !f.endsWith(".js")) continue
+            val raw = runCatching { app.assets.open("$DIR/$f").bufferedReader().use { it.readText() } }.getOrNull() ?: continue
+            val id = runCatching { PluginParser.parse(if (f.endsWith(".js")) PluginParser.jsToJson(raw) else raw, true).id }.getOrNull()
+            if (id == p.id) return f to raw
+        }
+        return null
+    }
+
+    /** Script source ready to edit and import again as a .js mod: the manifest comment is added if the mod was installed from JSON. */
+    fun exportScript(context: Context, p: KeyboardPlugin): String? {
+        val script = p.script ?: return null
+        if (SCRIPT_HEAD.containsMatchIn(script)) return script
+        val stored = exportSource(context, p)?.second?.removePrefix("\uFEFF")?.trim()
+        if (stored == null || !stored.startsWith("{")) return script
+        val manifest = runCatching {
+            JSONObject(stored).apply { remove("script"); remove("files"); remove("main") }.toString(2)
+        }.getOrNull() ?: return script
+        return "/* @plugin " + manifest + " */\n" + script
     }
 
     fun applyTheme(context: Context, t: PluginTheme) {
@@ -1100,26 +1140,26 @@ object PluginRepository {
 
     const val EXAMPLE = """{
   "id": "my.first.plugin",
-  "name": "Мой плагин",
+  "name": "My plugin",
   "version": "1.0",
-  "author": "Я",
-  "description": "Пример: действия, сокращения, символы, тема, оформление, настройки, варианты и раскладка",
+  "author": "Me",
+  "description": "Example: actions, shortcuts, symbols, theme, skin, settings, variants and layout",
   "icon": "@rocket",
   "actions": [
-    { "title": "Подпись", "icon": "@note", "type": "insert", "text": "С уважением,{newline}Иван", "pinned": true },
-    { "title": "Посчитать", "icon": "@calc", "type": "transform", "transform": "calc" },
-    { "title": "Сегодня", "icon": "@date", "type": "insert", "text": "{date:d MMMM yyyy}" },
-    { "title": "В кавычки", "icon": "«»", "type": "transform", "transform": "wrap", "prefix": "«", "suffix": "»" },
-    { "title": "КАПС", "icon": "@case", "type": "transform", "transform": "upper" },
-    { "title": "Выделить всё", "icon": "▣", "type": "key", "key": "select_all" }
+    { "title": "Signature", "icon": "@note", "type": "insert", "text": "Best regards,{newline}John", "pinned": true },
+    { "title": "Calculate", "icon": "@calc", "type": "transform", "transform": "calc" },
+    { "title": "Today", "icon": "@date", "type": "insert", "text": "{date:d MMMM yyyy}" },
+    { "title": "Quote it", "icon": "“”", "type": "transform", "transform": "wrap", "prefix": "“", "suffix": "”" },
+    { "title": "CAPS", "icon": "@case", "type": "transform", "transform": "upper" },
+    { "title": "Select all", "icon": "▣", "type": "key", "key": "select_all" }
   ],
   "shortcuts": {
-    "спс": "спасибо",
-    "омг": "о боже мой",
+    "ty": "thank you",
+    "omg": "oh my god",
     ":date": "{date}"
   },
   "symbols": [
-    { "title": "Стрелки", "icon": "→", "items": ["←", "↑", "→", "↓", "↔", "⇄", "⇒", "↩"] }
+    { "title": "Arrows", "icon": "→", "items": ["←", "↑", "→", "↓", "↔", "⇄", "⇒", "↩"] }
   ],
   "theme": {
     "seed": "#FF7A3D",
@@ -1128,7 +1168,7 @@ object PluginRepository {
     "colors": { "accent": "#FF7A3D", "accentText": "#2B1100" }
   },
   "settings": { "key_height_dp": 56, "show_number_row": true },
-  "variants": { "е": ["ё", "е", "є"] },
+  "variants": { "e": ["é", "è", "ê", "ë"] },
   "skin": {
     "keyboard": {
       "background": { "colors": ["#2B1100", "#5A1E00"], "angle": 120 },
@@ -1137,8 +1177,8 @@ object PluginRepository {
     "keys": {
       "*": { "material": "glass", "text": "#FFFFFF", "press": "jelly" },
       "enter": { "background": { "colors": ["#FF7A3D", "#FF3D7A"], "angle": 135 } },
-      "space": { "shape": "pill", "label": "пробел" },
-      "key:я": { "material": "solid", "background": "#FF7A3D", "text": "#2B1100", "glow": "#FF7A3D" }
+      "space": { "shape": "pill", "label": "space" },
+      "key:a": { "material": "solid", "background": "#FF7A3D", "text": "#2B1100", "glow": "#FF7A3D" }
     },
     "chips": { "material": "glass", "text": "#FFFFFF" }
   }

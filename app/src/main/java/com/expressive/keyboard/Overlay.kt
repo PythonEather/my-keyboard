@@ -272,7 +272,7 @@ internal fun BoxScope.ScriptOverlayLayer() {
     val exit = ScriptHost.touchExit
     ModParticleLayer(overlay = true)
     if (items.isEmpty() && !capture) return
-    val measurer = rememberTextMeasurer()
+    val measurer = rememberTextMeasurer(cacheSize = 256)
     val path = remember { Path() }
     val zx = zone?.get(0) ?: 0f
     val zy = zone?.get(1) ?: 0f
@@ -324,7 +324,7 @@ internal fun BoxScope.ScriptBackgroundLayer() {
     val items = ScriptHost.backgroundItems
     ModParticleLayer(overlay = false)
     if (items.isEmpty()) return
-    val measurer = rememberTextMeasurer()
+    val measurer = rememberTextMeasurer(cacheSize = 256)
     val path = remember { Path() }
     GlItems(items)
     Canvas(Modifier.matchParentSize()) { drawOverlayItems(items, measurer, path) }

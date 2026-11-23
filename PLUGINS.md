@@ -1,249 +1,257 @@
-# Плагины и моды Expressive Keyboard
+# Plugins and mods for Expressive Keyboard
 
-Плагин импортируется в **Настройки → Плагины и моды**: из файла или из буфера обмена. Бывает трёх видов:
+A plugin is imported in **Settings → Plugins and mods**, from a file or from the clipboard. There are three kinds:
 
-| Файл | Что внутри |
+| File | What is inside |
 |---|---|
-| `.json` | Декларативный плагин: действия, сокращения, символы, темы, оформление, настройки, раскладки, иконки, языки. Может содержать и скрипт в поле `script` |
-| `.js` | **Мод**: JavaScript, манифест — JSON в комментарии `/* @plugin { … } */` в начале файла |
-| `.zip` | Мод с файлами: `plugin.json` + `main.js` + картинки и данные (до 8 МБ) |
+| `.json` | A declarative plugin: actions, shortcuts, symbols, themes, skins, settings, layouts, icons, languages. It may also contain a script in the `script` field |
+| `.js` | A **mod**: JavaScript, with the manifest written as JSON in a `/* @plugin { … } */` comment at the top of the file |
+| `.zip` | A mod with files: `plugin.json` + `main.js` + images and data (up to 8 MB) |
 
-Скрипт мода получает объект `kb` и может реагировать на нажатия и слова, вставлять и менять текст,
-добавлять свои панели, кнопки, клавиши, подсказки, хранить данные, ходить в сеть, менять иконки, язык и настройки,
-**рисовать и анимировать что угодно поверх клавиатуры**, знать, где какая клавиша, «нажимать» клавиши, менять раскладку
-и оформление прямо на ходу. Например, можно сделать персонажа, который ходит по клавишам и печатает (пример ниже).
-Скрипт выполняется в песочнице: без доступа
-к Java и чужим файлам (у мода своя папка `kb.files`); то, что касается текста, сети, ссылок и ИИ, — только по разрешениям; каждый вызов ограничен по времени (300 мс, загрузка — 2 с), так что зависший мод не
-подвесит клавиатуру. Ошибки и `console.log` видны в карточке плагина («Журнал скрипта»).
+A mod script gets the `kb` object. It can react to key presses and words, insert and change text,
+add its own panels, buttons, keys and suggestions, store data, use the network, change icons, language and settings,
+**draw and animate anything on top of the keyboard**, find out where each key is, "press" keys, and change the layout
+and the look on the fly. For example, you can make a character that walks over the keys and types (example below).
+The script runs in a sandbox: it has no access to Java or to other apps' files (each mod has its own folder, `kb.files`);
+anything that touches text, the network, links and AI needs a permission; and every call has a time limit (300 ms, loading — 2 s),
+so a stuck mod cannot freeze the keyboard. Errors and `console.log` output are shown in the plugin card ("Script log").
 
-По умолчанию скрипты запускаются на Rhino. Чтобы выбрать QuickJS для конкретного мода, добавьте
-`"scriptEngine": "quickjs"` в его манифест. Поле работает для `.json`, комментария `@plugin` в `.js`
-и манифеста внутри `.zip`. Оба движка используют один API `kb.*` и могут работать одновременно.
+Scripts run on Rhino by default. To pick QuickJS for a particular mod, add
+`"scriptEngine": "quickjs"` to its manifest. The field works for `.json`, for the `@plugin` comment in `.js`
+and for the manifest inside a `.zip`. Both engines share the same `kb.*` API and can run at the same time.
 
-Встроенные примеры: моды «Заметки», «Калькулятор», «Ёлочки «»», «Студия» (пианино, рисование по клавиатуре, поле ввода, озвучка, свои настройки; `.js`), «Эффекты» (частицы, жидкость, шейдер, наклон, вкладки и пресеты настроек; `.js`), оформления «Жидкое стекло», «Неон»,
-«Неоморфизм» (`app/src/main/assets/plugins/`). Шаблоны: **Сохранить пример мода (.js)** и **Сохранить пример плагина**.
+Built-in examples: the mods Notes, Calculator, Smart quotes «», Studio (piano, drawing on the keyboard, an input field, text-to-speech, its own settings; `.js`) and Effects (particles, liquid, a shader, tilt, settings tabs and presets; `.js`), and the skins Liquid Glass, Neon and
+Neumorphism (`app/src/main/assets/plugins/`). Templates: **Save mod example (.js)** and **Save plugin example**.
 
-На клавиатуре плагины открываются кнопкой 🧩 на панели инструментов (кнопка с сеткой слева вверху).
+On the keyboard, plugins are opened with the 🧩 button on the toolbar (the grid button at the top left).
 
-## Общие поля
+**Exporting.** Every plugin card has an **Export plugin** button (it saves the plugin exactly as it is stored: JSON with its script and files)
+and, for mods with a script, an **Export script (.js)** button (the script with its manifest comment, ready to edit and import again).
+If you delete a plugin by accident, import the exported file with **Import from file** to get it back. Built-in plugins can be exported too.
 
-| Поле | Обязательно | Описание |
+## Common fields
+
+| Field | Required | Description |
 |---|---|---|
-| `id` | да | 2–64 символа: `A-Z a-z 0-9 . _ -`. Повторный импорт с тем же `id` обновляет плагин |
-| `name` | да | Название |
-| `version`, `author`, `description` | нет | Показываются в списке |
-| `icon` | нет | Эмодзи, короткий текст, `@значок` или `data:image/png;base64,…` (см. «Значки») |
-| `permissions` | нет | `network` — интернет, `read_text` — читать набираемый текст, `clipboard` — читать буфер обмена, `launch` — открывать ссылки, приложения и «Поделиться», `ai` — запросы к ИИ по ключу пользователя, `sensors` — наклон и вращение телефона, `microphone` — громкость и частоты с микрофона, `app_info` — в каком приложении печатают |
-| `config` | нет | Свои настройки мода — появляются в его карточке (см. «Настройки мода») |
-| `script` | нет | JavaScript мода (строка или массив строк) |
-| `scriptEngine` | нет | `rhino` (по умолчанию) или `quickjs` |
-| `callBudgetMs` | нет | Сколько мс даётся одному вызову скрипта: 300 (по умолчанию) … 2000. Нужен тяжёлым модам (3D, большие сетки). Время внутри функций `kb.*` (например, разбор сетки в `kb.overlay`) в лимит не входит (Rhino) |
-| `enabledByDefault` | нет | `false` — встроенный плагин появляется выключенным |
+| `id` | yes | 2–64 characters: `A-Z a-z 0-9 . _ -`. Importing again with the same `id` updates the plugin |
+| `name` | yes | Name |
+| `version`, `author`, `description` | no | Shown in the list |
+| `icon` | no | An emoji, a short text, `@icon` or `data:image/png;base64,…` (see "Icons") |
+| `permissions` | no | `network` — internet, `read_text` — read the typed text, `clipboard` — read the clipboard, `launch` — open links, apps and "Share", `ai` — AI requests with the user's key, `sensors` — tilt and rotation of the phone, `microphone` — volume and frequencies from the microphone, `app_info` — which app is being typed in, `screen` — show the mod's own screen (fullscreen, landscape or a floating panel) |
+| `config` | no | The mod's own settings — they appear in its card (see "Mod settings") |
+| `script` | no | The mod's JavaScript (a string or an array of strings) |
+| `scriptEngine` | no | `rhino` (default) or `quickjs` |
+| `callBudgetMs` | no | How many ms one script call gets: 300 (default) … 2000. Needed by heavy mods (3D, big meshes). Time spent inside `kb.*` functions (for example parsing a mesh in `kb.overlay`) does not count toward the limit (Rhino) |
+| `display` | no | The mod's own screen: `fullscreen`, `landscape`, `landscape-right` or `floating` (see "The mod's own screen") |
+| `enabledByDefault` | no | `false` — a built-in plugin appears turned off |
 
-Должен быть хотя бы один из блоков `script`, `actions`, `shortcuts`, `symbols`, `theme`, `skin`, `settings`,
-`layouts`, `variants`, `icons`, `languages` или `dictionary`.
+At least one of the blocks `script`, `actions`, `shortcuts`, `symbols`, `theme`, `skin`, `settings`,
+`layouts`, `variants`, `icons`, `languages` or `dictionary` must be present.
 
-При установке плагина с разрешениями клавиатура показывает, что именно он сможет делать.
+When a plugin with permissions is installed, the keyboard shows what exactly it will be able to do.
 
-# Моды: JavaScript API
+# Mods: JavaScript API
 
 ```js
 /* @plugin
-{ "id": "my.mod", "name": "Мой мод", "permissions": ["read_text"] }
+{ "id": "my.mod", "name": "My mod", "permissions": ["read_text"] }
 */
-kb.on("word", function (e) { console.log("набрано слово", e.word); });
-kb.addButton({ title: "Привет", icon: "👋", toolbar: true, onClick: function () { kb.commit("Привет!"); } });
+kb.on("word", function (e) { console.log("word typed", e.word); });
+kb.addButton({ title: "Hello", icon: "👋", toolbar: true, onClick: function () { kb.commit("Hello!"); } });
 ```
 
-Полный пример — **Настройки → Плагины и моды → Сохранить пример мода (.js)**.
+A full example is in **Settings → Plugins and mods → Save mod example (.js)**.
 
-## События: `kb.on(событие, функция)`
+## Events: `kb.on(event, function)`
 
-| Событие | Аргумент | Что можно вернуть |
+| Event | Argument | What you can return |
 |---|---|---|
-| `key` | `{ text }` — нажатая буква/символ | строку — ввести её вместо символа; `false` — отменить нажатие. *read_text* |
-| `word` | `{ word, previous }` — слово только что дописано | — *read_text* |
-| `suggest` | `{ word, previous }` — пока набирается слово | массив строк — подсказки по бокам строки подсказок. *read_text* |
-| `space` / `enter` / `backspace` | — | `false` — отменить стандартное действие |
-| `start` | `kb.field()` — открылось поле ввода | — *read_text* |
-| `finish`, `show`, `hide` | — | поле закрылось / клавиатура показана / скрыта |
-| `language` | код языка | — |
-| `clipboard` | скопированный текст | — *clipboard* |
-| `press` | `{ label, type }` — нажата любая клавиша (`a`, `space`, `enter`, `shift`…) | — *read_text* |
-| `frame` | миллисекунды с прошлого кадра | ~30 раз в секунду, пока клавиатура на экране — для анимаций |
-| `selection` | `{ start, end }` — курсор или выделение сдвинулись | — *read_text* |
-| `pick` | `{ word }` — выбрана подсказка | `false` — не вставлять. *read_text* |
-| `autocorrect` | `{ word, correction }` — пробел сейчас исправит слово (`correction` может быть `null`) | строку — своё исправление; `false` — не исправлять. *read_text* |
-| `voice` | `{ text }` — распознана фраза голосом | строку — вставить её; `false` — не вставлять. *read_text* |
-| `glide` | `{ word, alternatives }` — распознано слово свайпом | строку — вставить её; `false` — отменить. *read_text* |
-| `panel` | `keyboard`, `emoji`, `clipboard`, `voice`, `plugins`, `translate`, `script_input`… | открылась панель |
-| `shift` | `off`, `single`, `caps` | сменился Shift |
-| `device` | `kb.device()` | поворот экрана, смена темы системы |
-| `touch` | `{ type, x, y, pointer }`, `type` — `down`, `move`, `up` | касания клавиатуры, пока включено `kb.captureTouches()` |
-| `message` | `{ from, name, data }` | сообщение от другого мода (`kb.broadcast`) |
-| `option` | `{ id, value }` | поменялась настройка мода, нажата кнопка или пресет настроек |
-| `pointer` | `{ type, x, y, pointer }`, `type` — `down`, `move`, `up` | палец на клавиатуре; клавиши при этом работают как обычно. Движения приходят до 30 раз в секунду. *read_text*: по координатам видно, что набирают |
-| `tilt` | `{ x, y, z }`, примерно от −1 до 1 | наклон телефона, до 30 раз в секунду. *sensors* |
-| `gyro` | `{ x, y, z }`, рад/с | вращение телефона. *sensors* |
-| `audio` | `{ level, bands }`: 0..1 и 8 полос от низких к высоким | после `kb.audio.start()`, 20 раз в секунду. *microphone* |
-| `app` | `{ package, name, color }`, `color` — основной цвет значка | открылось поле другого приложения. *app_info* |
+| `key` | `{ text }` — the letter/symbol that was pressed | a string — type it instead of the symbol; `false` — cancel the press. *read_text* |
+| `word` | `{ word, previous }` — a word has just been finished | — *read_text* |
+| `suggest` | `{ word, previous }` — while a word is being typed | an array of strings — suggestions on the sides of the suggestion bar. *read_text* |
+| `space` / `enter` / `backspace` | — | `false` — cancel the standard action |
+| `start` | `kb.field()` — an input field was opened | — *read_text* |
+| `finish`, `show`, `hide` | — | the field was closed / the keyboard was shown / hidden |
+| `language` | language code | — |
+| `clipboard` | the copied text | — *clipboard* |
+| `press` | `{ label, type }` — any key was pressed (`a`, `space`, `enter`, `shift`…) | — *read_text* |
+| `frame` | milliseconds since the previous frame | about 30 times per second while the keyboard is on screen — for animations |
+| `selection` | `{ start, end }` — the cursor or the selection moved | — *read_text* |
+| `pick` | `{ word }` — a suggestion was chosen | `false` — do not insert it. *read_text* |
+| `autocorrect` | `{ word, correction }` — the space is about to correct the word (`correction` may be `null`) | a string — your own correction; `false` — do not correct. *read_text* |
+| `voice` | `{ text }` — a phrase was recognized by voice | a string — insert it; `false` — do not insert. *read_text* |
+| `glide` | `{ word, alternatives }` — a word was recognized from a swipe | a string — insert it; `false` — cancel. *read_text* |
+| `panel` | `keyboard`, `emoji`, `clipboard`, `voice`, `plugins`, `translate`, `script_input`… | a panel was opened |
+| `shift` | `off`, `single`, `caps` | Shift changed |
+| `device` | `kb.device()` | screen rotation, system theme change |
+| `touch` | `{ type, x, y, pointer }`, `type` — `down`, `move`, `up` | touches on the keyboard while `kb.captureTouches()` is on |
+| `message` | `{ from, name, data }` | a message from another mod (`kb.broadcast`) |
+| `option` | `{ id, value }` | a mod setting changed, or a settings button or preset was pressed |
+| `pointer` | `{ type, x, y, pointer }`, `type` — `down`, `move`, `up` | a finger on the keyboard; the keys keep working as usual. Moves arrive up to 30 times per second. *read_text*: the coordinates show what is being typed |
+| `tilt` | `{ x, y, z }`, roughly from −1 to 1 | phone tilt, up to 30 times per second. *sensors* |
+| `gyro` | `{ x, y, z }`, rad/s | phone rotation. *sensors* |
+| `audio` | `{ level, bands }`: 0..1 and 8 bands from low to high | after `kb.audio.start()`, 20 times per second. *microphone* |
+| `app` | `{ package, name, color }`, `color` — the main color of the icon | a field in another app was opened. *app_info* |
 
-В полях паролей и в режиме инкогнито `pointer`, `tilt`, `gyro`, `audio` и `app` не приходят. Датчики и микрофон работают,
-только пока клавиатура на экране; при открытом голосовом вводе микрофон отдан ему. Сам звук мод не получает никогда.
+In password fields and in incognito mode, `pointer`, `tilt`, `gyro`, `audio` and `app` are not delivered. Sensors and the microphone work
+only while the keyboard is on screen; while voice input is open, the microphone belongs to it. The mod never receives the sound itself.
 
-`kb.off(событие)` снимает все обработчики события.
+`kb.off(event)` removes all handlers of an event.
 
-## Ввод и чтение текста
+## Typing and reading text
 
-| Функция | Описание |
+| Function | Description |
 |---|---|
-| `kb.commit(text)` | Вставить текст в поле |
-| `kb.deleteBefore(n)` / `kb.deleteAfter(n)` | Удалить n символов до / после курсора |
-| `kb.replaceBefore(n, text)` | Удалить n символов до курсора и вставить text |
-| `kb.textBefore(n = 200)` / `kb.textAfter(n)` | Текст до / после курсора. *read_text* |
-| `kb.selectedText()` / `kb.currentWord()` | Выделение / слово перед курсором. *read_text* |
-| `kb.setSelection(start, end)` | Выделить или переставить курсор |
+| `kb.commit(text)` | Insert text into the field |
+| `kb.deleteBefore(n)` / `kb.deleteAfter(n)` | Delete n characters before / after the cursor |
+| `kb.replaceBefore(n, text)` | Delete n characters before the cursor and insert text |
+| `kb.textBefore(n = 200)` / `kb.textAfter(n)` | The text before / after the cursor. *read_text* |
+| `kb.selectedText()` / `kb.currentWord()` | The selection / the word before the cursor. *read_text* |
+| `kb.setSelection(start, end)` | Select, or move the cursor |
 | `kb.key(name)` | `enter`, `space`, `backspace`, `tab`, `left`, `right`, `up`, `down`, `home`, `end`, `select_all`, `copy`, `cut`, `paste`, `undo`, `redo`, `delete_word`, `escape`, `shift`, `language` |
-| `kb.setSuggestions([...], onPick)` | Показать свои слова в строке подсказок. С `onPick(word, index)` выбор достаётся моду, а не вставляется |
-| `kb.setComposing(text)` / `kb.finishComposing()` | Своё «набираемое» (подчёркнутое) слово / закрепить его. Вместе с событием `key`, которое возвращает `false`, — свой способ ввода |
-| `kb.cursor()` | `{ start, end }` — позиция курсора в поле. *read_text* |
-| `kb.allText()` | Весь текст поля. *read_text* |
-| `kb.replaceSelection(text)` / `kb.replaceAll(text)` | Заменить выделение / весь текст поля |
-| `kb.sendKey(key, { ctrl, alt, shift, meta })` | Настоящая клавиша: `"a"`, `"f5"`, `"tab"`, `"escape"`, `"page_up"`, `"delete"` или код Android. `kb.sendKey("z", { ctrl: true })` — Ctrl+Z |
-| `kb.editorAction(name)` | Действие поля: `search`, `send`, `go`, `next`, `previous`, `done` |
-| `kb.commitImage(src)` | Вставить картинку (`data:image/…` или файл из .zip), если поле принимает картинки. Возвращает `true`/`false` |
+| `kb.setSuggestions([...], onPick)` | Show your own words in the suggestion bar. With `onPick(word, index)` the choice goes to the mod instead of being inserted |
+| `kb.setComposing(text)` / `kb.finishComposing()` | Your own "being typed" (underlined) word / commit it. Together with a `key` event that returns `false`, this gives you your own input method |
+| `kb.cursor()` | `{ start, end }` — the cursor position in the field. *read_text* |
+| `kb.allText()` | The whole text of the field. *read_text* |
+| `kb.replaceSelection(text)` / `kb.replaceAll(text)` | Replace the selection / the whole text of the field |
+| `kb.sendKey(key, { ctrl, alt, shift, meta })` | A real key: `"a"`, `"f5"`, `"tab"`, `"escape"`, `"page_up"`, `"delete"` or an Android key code. `kb.sendKey("z", { ctrl: true })` is Ctrl+Z |
+| `kb.editorAction(name)` | A field action: `search`, `send`, `go`, `next`, `previous`, `done` |
+| `kb.commitImage(src)` | Insert an image (`data:image/…` or a file from the .zip) if the field accepts images. Returns `true`/`false` |
 
-## Клавиатура
+## Keyboard
 
-| Функция | Описание |
+| Function | Description |
 |---|---|
-| `kb.language()` / `kb.setLanguage(id)` / `kb.languages()` | Текущий язык / сменить / включённые языки |
+| `kb.language()` / `kb.setLanguage(id)` / `kb.languages()` | The current language / change it / the enabled languages |
 | `kb.shift()` / `kb.setShift(s)` | `off`, `single`, `caps` |
 | `kb.field()` | `{ package, inputType, password, multiLine, action, hint }` |
-| `kb.openPanel(id)` / `kb.closePanel()` | `keyboard`, `emoji`, `clipboard`, `translate`, `gif`, `voice`, `plugins`, `plugin:<id мода>/<id панели>` |
-| `kb.status(text)` / `kb.toast(text)` | Строка состояния на панели плагинов / всплывающее сообщение |
-| `kb.vibrate(ms)` / `kb.hide()` | Вибрация / скрыть клавиатуру |
-| `kb.clipboard()` / `kb.copy(text)` | История буфера (*clipboard*) / скопировать |
-| `kb.setIcon(slot, spec)` / `kb.resetIcon(slot)` | Заменить иконку (слоты — в разделе `icons`) |
-| `kb.settings.get(key)` / `kb.settings.set(key, value)` | Любая настройка из раздела `settings` |
+| `kb.openPanel(id)` / `kb.closePanel()` | `keyboard`, `emoji`, `clipboard`, `translate`, `gif`, `voice`, `plugins`, `plugin:<mod id>/<panel id>` |
+| `kb.status(text)` / `kb.toast(text)` | A status line on the plugins panel / a popup message |
+| `kb.vibrate(ms)` / `kb.hide()` | Vibrate / hide the keyboard |
+| `kb.clipboard()` / `kb.copy(text)` | The clipboard history (*clipboard*) / copy |
+| `kb.setIcon(slot, spec)` / `kb.resetIcon(slot)` | Replace an icon (the slots are listed in the `icons` section) |
+| `kb.settings.get(key)` / `kb.settings.set(key, value)` | Any setting from the `settings` section |
 
-## Свой интерфейс
+## Own interface
 
 ```js
-kb.addButton({ id, title, icon, toolbar: true, onClick })   // кнопка на вкладке мода и (toolbar) на панели инструментов
+kb.addButton({ id, title, icon, toolbar: true, onClick })   // a button on the mod's tab and (toolbar) on the toolbar
 kb.removeButton(id)
-kb.addPanel({ id, title, icon, render })                     // своя вкладка на панели плагинов
-kb.refresh()                                                 // перерисовать панели (вызвать render заново)
-kb.addCommand(name, fn)                                      // команда для клавиши раскладки { "label": "λ", "action": "name" }
+kb.addPanel({ id, title, icon, render })                     // your own tab on the plugins panel
+kb.refresh()                                                 // redraw the panels (call render again)
+kb.addCommand(name, fn)                                      // a command for a layout key { "label": "λ", "action": "name" }
 ```
 
-`render()` возвращает массив элементов:
+`render()` returns an array of elements:
 
-| Элемент | Поля |
+| Element | Fields |
 |---|---|
 | `{ type: "text" }` | `text`, `size`, `bold`, `color`, `center` |
 | `{ type: "button" }` | `text`, `icon`, `accent`, `wide`, `onClick(value)`, `value` |
-| `{ type: "row" }` / `{ type: "column" }` | `children: [...]` (ряд переносится на новую строку, если не помещается) |
-| `{ type: "grid" }` | `items: ["😀", { text, icon, value }]`, `minWidth`, `height`, `columns`, `onClick(value)`. `columns` задаёт ровное число колонок (например, калькулятор: `columns: 4`), `minWidth` — минимальную ширину ячейки при переносе |
-| `{ type: "image" }` | `src` (`data:image/…` или `kb.asset("pic.png")`), `size`, `onClick` |
+| `{ type: "row" }` / `{ type: "column" }` | `children: [...]` (a row wraps to a new line if it does not fit) |
+| `{ type: "grid" }` | `items: ["😀", { text, icon, value }]`, `minWidth`, `height`, `columns`, `onClick(value)`. `columns` sets an exact number of columns (for example a calculator: `columns: 4`), `minWidth` sets the minimum cell width when wrapping |
+| `{ type: "image" }` | `src` (`data:image/…` or `kb.asset("pic.png")`), `size`, `onClick` |
 | `{ type: "spacer" }` | `size` |
-| `{ type: "input" }` | `title`, `hint`, `value`, `onChange(text)`, `onSubmit(text)` — по нажатию клавиатура печатает в это поле |
+| `{ type: "input" }` | `title`, `hint`, `value`, `onChange(text)`, `onSubmit(text)` — after a tap the keyboard types into this field |
 | `{ type: "toggle" }` | `text`, `checked`, `onChange(checked)` |
-| `{ type: "slider" }` | `text`, `value`, `min`, `max`, `step`, `onChange(value)` (когда палец отпущен) |
-| `{ type: "progress" }` | `value` 0..1; без `value` — бесконечная полоса |
-| `{ type: "divider" }` | Разделитель |
-| `{ type: "box" }` | Карточка: `children`, `color`, `radius`, `padding`, `border`, `onClick(value)`, `value` |
-| `{ type: "tabs" }` | Вкладки-«таблетки»: `items` (как у `grid`), `selected`, `onClick(value)` |
-| `{ type: "canvas" }` | Холст: `height`, `items` (элементы как у `kb.overlay`), `onTap({ x, y })` |
-| `{ type: "scroll" }` | Прокрутка: `children`, `horizontal`, `height` (максимальная высота) |
+| `{ type: "slider" }` | `text`, `value`, `min`, `max`, `step`, `onChange(value)` (when the finger is released) |
+| `{ type: "progress" }` | `value` 0..1; without `value` — an endless bar |
+| `{ type: "divider" }` | A divider |
+| `{ type: "box" }` | A card: `children`, `color`, `radius`, `padding`, `border`, `onClick(value)`, `value` |
+| `{ type: "tabs" }` | "Pill" tabs: `items` (as in `grid`), `selected`, `onClick(value)` |
+| `{ type: "canvas" }` | A canvas: `height`, `items` (elements as in `kb.overlay`), `onTap({ x, y })` |
+| `{ type: "scroll" }` | Scrolling: `children`, `horizontal`, `height` (maximum height) |
 
-Дополнительно: у `text` — `align` (`start`, `center`, `end`), `maxLines`, `mono`, `italic`; у `button` — `color`, `textColor`,
+Extras: `text` also has `align` (`start`, `center`, `end`), `maxLines`, `mono`, `italic`; `button` also has `color`, `textColor`,
 `onLongClick(value)`, `disabled`.
 
-После нажатия на элемент панель перерисовывается автоматически.
+After an element is tapped, the panel is redrawn automatically.
 
-### Ввод текста в моде
+### Text input in a mod
 
 ```js
-kb.prompt({ title: "Поиск", hint: "Что найти?", value: "" }, function (text) {
-  if (text === null) return;            // закрыли кнопкой ←
-  kb.commit("Ищу: " + text);
+kb.prompt({ title: "Search", hint: "What to look for?", value: "" }, function (text) {
+  if (text === null) return;            // closed with the ← button
+  kb.commit("Searching: " + text);
 });
-kb.input({ title: "Имя" }).then(function (name) { kb.toast("Привет, " + name); });   // то же на промисе
+kb.input({ title: "Name" }).then(function (name) { kb.toast("Hello, " + name); });   // the same with a promise
 kb.closePrompt();
 ```
 
-Пока поле открыто, над клавиатурой стоит строка мода (← закрыть, ✓ отправить), а клавиши печатают в неё, а не в приложение.
-Enter тоже отправляет. В обработчике можно сразу открыть следующее поле — так делаются диалоги в несколько шагов.
+While the field is open, a mod line sits above the keyboard (← close, ✓ send), and the keys type into it instead of the app.
+Enter sends as well. The handler may open the next field right away — that is how multi-step dialogs are made.
 
-## Свой экран мода: на весь экран или плавающая панель
+## The mod's own screen: fullscreen, landscape or a floating panel
 
-Мод может занять экран. Что из двух — решает автор в манифесте (`"display"`), **один вид на мод**:
+A mod can take over the screen. Which kind is chosen by the author in the manifest (`"display"`), **one kind per mod**:
 
-| `display` | Что это |
+| `display` | What it is |
 |---|---|
-| `"fullscreen"` | Окно клавиатуры растягивается на весь экран. Приложение под ним не сжимается. `kb.keyboardSize()` отдаёт размер всего окна, поэтому всё, что мод рисует через `kb.overlay`, автоматически становится больше |
-| `"floating"` | Клавиатура стоит внизу как обычно, а над приложением плавает карточка с панелью мода (`kb.addPanel`). Её можно таскать за верхнюю полосу. Касания мимо клавиатуры и карточки достаются приложению |
+| `"fullscreen"` | The keyboard window stretches over the whole screen. The app under it is not squeezed. `kb.keyboardSize()` returns the size of the whole window, so everything the mod draws with `kb.overlay` automatically becomes larger |
+| `"landscape"` | **Landscape full screen.** The same as `fullscreen`, but the picture is turned 90° clockwise on a portrait screen: turn the phone counterclockwise (its top edge to the left) and you get a wide, landscape canvas. `kb.keyboardSize()` returns the **landscape** size (width is the long side), the keys, panels, overlay and touches all work in that turned space. If the phone is already in landscape, it behaves as plain `fullscreen` |
+| `"landscape-right"` | The same as `landscape`, turned the other way: the picture is turned 90° counterclockwise, so turn the phone clockwise (its top edge to the right) |
+| `"floating"` | The keyboard stands at the bottom as usual, and a card with the mod's panel (`kb.addPanel`) floats over the app. It can be dragged by its top strip. Touches outside the keyboard and the card go to the app |
 
-Нужно разрешение `"screen"` в `permissions` (при импорте клавиатура показывает его владельцу).
+The `"screen"` permission is required in `permissions` (on import the keyboard shows it to the owner).
 
 ```js
 /* @plugin
 { "id": "my.screen", "name": "My screen", "scriptEngine": "quickjs",
-  "permissions": ["screen"], "display": "fullscreen" }
+  "permissions": ["screen"], "display": "landscape" }
 */
 kb.on("screen", function (e) { console.log(e.open ? "opened" : "closed"); });
 kb.addButton({ title: "Open", icon: "🖥", toolbar: true, onClick: function () {
-  kb.screenOpen({ keys: false });      // fullscreen without keys; keys: true keeps them at the bottom
+  kb.screenOpen({ keys: false });      // landscape without keys; keys: true keeps them at the bottom
 }});
 ```
 
-| Вызов | Что делает |
+| Call | What it does |
 |---|---|
-| `kb.screenOpen({ keys, panel, width, height, exit })` | Открывает экран в режиме из манифеста. `keys` (только `fullscreen`, по умолчанию `true`) — оставить клавиши внизу или убрать совсем. `panel` — id панели из `kb.addPanel`: на полном экране она рисуется над клавишами, для `floating` **обязательна**. `width`, `height` — размер карточки в dp (160–600 × 120–700). `exit` — угол кнопки ✕ на полном экране. Открыт может быть только один экран: новый закрывает прежний, и мод получает событие `screen` с `open: false` |
-| `kb.screenClose()` | Закрывает экран мода |
-| событие `screen` | `{ open, mode }`: экран открылся или закрылся (в том числе по ✕ или когда клавиатура скрылась) |
+| `kb.screenOpen({ keys, panel, width, height, exit })` | Opens the screen in the mode from the manifest. `keys` (only for `fullscreen` and `landscape`, `true` by default) — keep the keys at the bottom or remove them completely. `panel` — the id of a panel from `kb.addPanel`: on a full screen it is drawn above the keys, for `floating` it is **required**. `width`, `height` — the size of the card in dp (160–600 × 120–700). `exit` — the corner of the ✕ button on a full screen. Only one screen can be open: a new one closes the previous one, and the mod gets a `screen` event with `open: false` |
+| `kb.screenClose()` | Closes the mod's screen |
+| `screen` event | `{ open, mode }`: the screen was opened or closed (including by ✕ or when the keyboard was hidden). `mode` is `fullscreen` for both `fullscreen` and the landscape kinds |
 
-Правила безопасности: кнопка ✕ есть всегда, мод её не убирает (если мод ловит касания через `kb.captureTouches`, ✕ слоя касаний закрывает и экран).
-Экран закрывается сам, когда клавиатура скрывается. Плавающая панель мода не работает при включённой плавающей клавиатуре.
-На полном экране фон — обычный фон клавиатуры; игры и рисование ловят касания через `kb.captureTouches(true)`.
+Safety rules: the ✕ button is always there and the mod cannot remove it (if the mod captures touches with `kb.captureTouches`, the ✕ of the touch layer closes the screen too).
+The screen closes by itself when the keyboard is hidden. A floating mod panel does not work while the floating keyboard is on.
+On a full screen the background is the normal keyboard background; games and drawing capture touches with `kb.captureTouches(true)`.
+In `landscape`, `x`/`y` coordinates of overlay items and touches are in the turned (landscape) space: `x` runs along the long side, from the left edge of the picture.
 
-## Рисование поверх клавиатуры и клавиши
+## Drawing over the keyboard, and keys
 
-Слой мода лежит поверх клавиш и не мешает печатать. Координаты и размеры — в dp от левого верхнего угла клавиатуры.
+The mod layer lies on top of the keys and does not get in the way of typing. Coordinates and sizes are in dp from the top-left corner of the keyboard.
 
-| Функция | Описание |
+| Function | Description |
 |---|---|
-| `kb.overlay([...])` / `kb.clearOverlay()` | Нарисовать набор элементов (заменяет прошлый) / убрать |
-| `kb.background([...])` / `kb.clearBackground()` | То же, но **под клавишами**: поверх фона клавиатуры, клавиши остаются сверху — для живых фонов, волн, частиц. Стеклянные клавиши преломляют обычный фон темы, а не этот слой |
+| `kb.overlay([...])` / `kb.clearOverlay()` | Draw a set of elements (replaces the previous one) / remove it |
+| `kb.background([...])` / `kb.clearBackground()` | The same, but **under the keys**: on top of the keyboard background, with the keys staying above — for live backgrounds, waves, particles. Glass keys refract the theme's normal background, not this layer |
 | `kb.keyboardSize()` | `{ width, height }` |
-| `kb.keys()` | Все клавиши: `[{ label, type, x, y, w, h, cx, cy }]` (`label` — буква или `space`, `enter`, `shift`, `backspace`, `symbols`, `globe`, `emoji`) |
-| `kb.keyRect(label)` | Прямоугольник одной клавиши или `null` |
-| `kb.pressKey(label, { type: true })` | Анимация нажатия; `type: false` — только анимация, без ввода |
-| `kb.colors()` | Текущие цвета: `background`, `key`, `keyText`, `func`, `funcText`, `accent`, `accentText` |
-| `kb.setLayout(id, rows)` / `kb.setLayout(id, null)` | Своя раскладка на ходу (формат рядов — как в `layouts`) / вернуть обычную |
-| `kb.setSkin({...})` / `kb.setSkin(null)` | Оформление на ходу (формат — как `skin`) / снять |
-| `kb.captureTouches(true/false)` | Слой мода ловит касания (событие `touch`), клавиши в это время не нажимаются — для игр и рисования пальцем. В углу клавиатуры при этом всегда есть ✕: он снимает перехват, а мод получает `touch` с `type: "cancel"` Второй аргумент: `kb.captureTouches(true, { zone: {x, y, w, h}, exit: "topEnd" })` — `zone` (dp от угла клавиатуры) ловит касания только внутри себя, остальное достаётся клавишам; `exit` — угол кнопки ✕: `topEnd`, `topStart`, `bottomEnd`, `bottomStart` |
-| `kb.glUniforms(id, {имя: значение})` | Меняет uniform GL-слоя (`type: "gl"`, у него задан `id`) без пересылки всего списка kb.overlay: быстрее и без перерисовки интерфейса. Новый `kb.overlay` сбрасывает эти значения. Возвращает `false`, если аргументы не подошли |
+| `kb.keys()` | All keys: `[{ label, type, x, y, w, h, cx, cy }]` (`label` is a letter or `space`, `enter`, `shift`, `backspace`, `symbols`, `globe`, `emoji`) |
+| `kb.keyRect(label)` | The rectangle of one key, or `null` |
+| `kb.pressKey(label, { type: true })` | The press animation; `type: false` — animation only, nothing is typed |
+| `kb.colors()` | The current colors: `background`, `key`, `keyText`, `func`, `funcText`, `accent`, `accentText` |
+| `kb.setLayout(id, rows)` / `kb.setLayout(id, null)` | Your own layout on the fly (the row format is the same as in `layouts`) / go back to the normal one |
+| `kb.setSkin({...})` / `kb.setSkin(null)` | A skin on the fly (the format is the same as `skin`) / remove it |
+| `kb.captureTouches(true/false)` | The mod layer catches touches (the `touch` event) and the keys are not pressed meanwhile — for games and finger drawing. A ✕ is always present in the corner of the keyboard: it releases the capture, and the mod gets `touch` with `type: "cancel"`. Second argument: `kb.captureTouches(true, { zone: {x, y, w, h}, exit: "topEnd" })` — `zone` (dp from the keyboard corner) catches touches only inside itself, the rest go to the keys; `exit` — the corner of the ✕ button: `topEnd`, `topStart`, `bottomEnd`, `bottomStart` |
+| `kb.glUniforms(id, {name: value})` | Changes a uniform of a GL layer (`type: "gl"` with an `id`) without resending the whole `kb.overlay` list: faster and with no UI redraw. A new `kb.overlay` resets these values. Returns `false` if the arguments did not fit |
 
-Элементы `kb.overlay`:
+`kb.overlay` elements:
 
-| Элемент | Поля |
+| Element | Fields |
 |---|---|
-| `{ type: "rect" }` | `x`, `y`, `w`, `h`, `color`, `radius`, `stroke` (толщина контура; 0 — заливка) |
-| `{ type: "circle" }` | `x`, `y` (левый верхний угол), `r` или `w`/`h`, `color`, `stroke` |
+| `{ type: "rect" }` | `x`, `y`, `w`, `h`, `color`, `radius`, `stroke` (outline thickness; 0 — filled) |
+| `{ type: "circle" }` | `x`, `y` (top-left corner), `r` or `w`/`h`, `color`, `stroke` |
 | `{ type: "line" }` / `{ type: "path" }` | `points: [[x, y], …]`, `color`, `width`, `closed`, `fill` |
 | `{ type: "text" }` | `x`, `y`, `text`, `size`, `color`, `bold`, `center` |
-| `{ type: "pixels" }` | Пиксель-арт: `x`, `y`, `scale` (размер пикселя), `rows: ["..##..", …]`, `palette: { "#": "#D97757" }`, `flipX` |
-| `{ type: "image" }` | `x`, `y`, `w`, `h`, `src` (`data:image/…` или `kb.asset("pic.png")`), `flipX` |
+| `{ type: "pixels" }` | Pixel art: `x`, `y`, `scale` (pixel size), `rows: ["..##..", …]`, `palette: { "#": "#D97757" }`, `flipX` |
+| `{ type: "image" }` | `x`, `y`, `w`, `h`, `src` (`data:image/…` or `kb.asset("pic.png")`), `flipX` |
 
-У всех элементов есть `alpha` (0..1) и `rotation` (градусы).
+All elements have `alpha` (0..1) and `rotation` (degrees).
 
-Пример: персонаж ходит от клавиши к клавише и «нажимает» их.
+Example: a character walks from key to key and "presses" them.
 
 ```js
 /* @plugin
-{ "id": "my.walker", "name": "Питомец", "icon": "🐾" }
+{ "id": "my.walker", "name": "Pet", "icon": "🐾" }
 */
 var SPRITE = ["..####..", ".######.", "##.##.##", "########", ".#.##.#.", "#.#..#.#"];
 var x = 20, y = 20, target = null, flip = false;
@@ -254,64 +262,64 @@ kb.on("frame", function (dt) {
     target = keys[Math.floor(Math.random() * keys.length)];
   }
   var dx = target.cx - x, dy = target.cy - 12 - y, d = Math.sqrt(dx * dx + dy * dy);
-  var step = 0.12 * dt;                       // скорость: 120 dp в секунду
+  var step = 0.12 * dt;                       // speed: 120 dp per second
   if (d <= step) {
-    kb.pressKey(target.label, { type: false }); // только анимация — в поле ничего не вводится
+    kb.pressKey(target.label, { type: false }); // animation only — nothing is typed into the field
     target = null;
   } else { x += dx / d * step; y += dy / d * step; flip = dx < 0; }
   kb.overlay([{ type: "pixels", x: x - 12, y: y - 9, scale: 3, rows: SPRITE, palette: { "#": "#D97757" }, flipX: flip }]);
 });
 ```
 
-## Эффекты: частицы, шейдеры, наклон клавиш
+## Effects: particles, shaders, key tilt
 
-Скрипт работает на интерпретаторе и не успевает считать тысячи объектов за кадр, поэтому тяжёлое считает сама клавиатура:
-мод только задаёт параметры. `kb.supports(имя)` проверяет возможность: `shader`, `postEffect`, `labelBlur`, `sensors`, `microphone`.
+The script runs in an interpreter and cannot count thousands of objects per frame, so the keyboard does the heavy work itself:
+the mod only sets parameters. `kb.supports(name)` checks a capability: `shader`, `postEffect`, `labelBlur`, `sensors`, `microphone`.
 
-### Частицы
+### Particles
 
-До 20 000 частиц (жидкость — до 3 000), до 8 систем у мода. Они отскакивают от клавиш и реагируют на палец и наклон сами,
-без единого вызова скрипта, поэтому для этого не нужны разрешения.
+Up to 20,000 particles (liquid — up to 3,000), up to 8 systems per mod. They bounce off the keys and react to the finger and to tilt on their own,
+without a single script call, so no permissions are needed for this.
 
-| Функция | Описание |
+| Function | Description |
 |---|---|
-| `kb.particles.set(имя, настройки)` | Создать систему или поменять настройки на ходу |
-| `kb.particles.emit(имя, { count, x, y, w, h, speed, angle, spread })` | Выбросить частицы из точки или прямоугольника; углы в градусах, 0 — вправо |
-| `kb.particles.clear(имя)` / `remove(имя)` / `count(имя)` | Убрать частицы / всю систему / узнать, сколько их |
+| `kb.particles.set(name, settings)` | Create a system or change its settings on the fly |
+| `kb.particles.emit(name, { count, x, y, w, h, speed, angle, spread })` | Throw particles out of a point or a rectangle; angles are in degrees, 0 — to the right |
+| `kb.particles.clear(name)` / `remove(name)` / `count(name)` | Remove the particles / the whole system / find out how many there are |
 
-| Настройка | Описание |
+| Setting | Description |
 |---|---|
-| `max`, `size`, `color` или `colors` (до 8) | Сколько, размер в dp, цвета |
-| `layer` | `background` (под клавишами, по умолчанию) или `overlay` |
-| `gravity` | `[x, y]` или `y`, dp/с² |
-| `drag`, `bounce`, `life`, `fade` | Сопротивление, упругость 0..1, время жизни в секундах (0 — вечно), угасание |
-| `bounds` | Края клавиатуры: `bounce`, `kill`, `wrap` |
-| `collideKeys` | Отскакивать от клавиш |
-| `tilt` | Сила тяжести от наклона телефона, dp/с² |
-| `touchForce`, `touchRadius` | Палец толкает (больше 0) или притягивает (меньше 0) |
-| `emitOnTouch` | Сколько частиц рождается под пальцем при каждом движении |
-| `rate`, `rateX`, `rateY`, `rateW`, `rateH`, `speed` | Постоянный поток из прямоугольника, частиц в секунду |
-| `liquid`, `liquidRadius`, `stiffness`, `viscosity` | Жидкость: частицы расталкивают друг друга и текут вместе. Это быстрое приближение, а не решение уравнений Навье — Стокса |
+| `max`, `size`, `color` or `colors` (up to 8) | How many, size in dp, colors |
+| `layer` | `background` (under the keys, default) or `overlay` |
+| `gravity` | `[x, y]` or `y`, dp/s² |
+| `drag`, `bounce`, `life`, `fade` | Drag, bounciness 0..1, lifetime in seconds (0 — forever), fading |
+| `bounds` | The keyboard edges: `bounce`, `kill`, `wrap` |
+| `collideKeys` | Bounce off the keys |
+| `tilt` | Gravity from the phone tilt, dp/s² |
+| `touchForce`, `touchRadius` | The finger pushes (above 0) or pulls (below 0) |
+| `emitOnTouch` | How many particles are born under the finger on every move |
+| `rate`, `rateX`, `rateY`, `rateW`, `rateH`, `speed` | A constant stream from a rectangle, particles per second |
+| `liquid`, `liquidRadius`, `stiffness`, `viscosity` | Liquid: the particles push each other apart and flow together. It is a fast approximation, not a solution of the Navier–Stokes equations |
 
 ```js
-kb.particles.set("вода", { max: 1500, liquid: true, size: 7, color: "#664FC3F7", gravity: 500, tilt: 900,
+kb.particles.set("water", { max: 1500, liquid: true, size: 7, color: "#664FC3F7", gravity: 500, tilt: 900,
   collideKeys: true, touchForce: 6000, bounce: 0.2 });
-kb.particles.emit("вода", { count: 1500, x: 0, y: 0, w: 360, h: 60 });
+kb.particles.emit("water", { count: 1500, x: 0, y: 0, w: 360, h: 60 });
 ```
 
-### Шейдеры (Android 13+)
+### Shaders (Android 13+)
 
-Язык — AGSL: почти GLSL, но вход — `half4 main(float2 fragCoord)`, типы `float2`, `half4`. На старых Android шейдер не
-рисуется. Ошибка сборки попадает в журнал мода, текст можно получить из `kb.shaderError(src)`.
+The language is AGSL: almost GLSL, but the entry point is `half4 main(float2 fragCoord)` and the types are `float2`, `half4`. On older Android versions the shader is
+not drawn. A compile error goes to the mod's log, and the text can be obtained with `kb.shaderError(src)`.
 
-Элемент `kb.overlay` и `kb.background`: `{ type: "shader", src, x, y, w, h, uniforms: { ... }, alpha, rotation }`.
-Без `w` и `h` он занимает всю клавиатуру. Анимируется сам, вызывать `kb.overlay` каждый кадр не нужно.
-`kb.postEffect({ src, uniforms })` применяет шейдер ко всему изображению клавиатуры: искажения, голограмма, преломление.
-Изображение приходит как `uniform shader content`. `kb.postEffect(null)` снимает эффект. Нажатия клавиш искажение не сдвигает.
+A `kb.overlay` and `kb.background` element: `{ type: "shader", src, x, y, w, h, uniforms: { ... }, alpha, rotation }`.
+Without `w` and `h` it covers the whole keyboard. It animates by itself, so you do not need to call `kb.overlay` every frame.
+`kb.postEffect({ src, uniforms })` applies a shader to the whole picture of the keyboard: distortion, hologram, refraction.
+The picture arrives as `uniform shader content`. `kb.postEffect(null)` removes the effect. The distortion does not shift where keys are pressed.
 
-Значения `uniforms`: число, массив чисел (`float2`..`float4`) или цвет `"#RRGGBB"` (в `float4`).
-Сами заполняются, если объявлены: `float iTime`, `float2 iResolution` (px), `float3 iTouch` (x, y в px, нажато 0/1),
-`float2 iTilt`, `float iAudio` (только у мода с *microphone*, когда он включён).
+`uniforms` values: a number, an array of numbers (`float2`..`float4`) or a color `"#RRGGBB"` (into `float4`).
+These are filled in by themselves if declared: `float iTime`, `float2 iResolution` (px), `float3 iTouch` (x, y in px, pressed 0/1),
+`float2 iTilt`, `float iAudio` (only for a mod with *microphone*, when it is on).
 
 ```js
 kb.postEffect({ src: `
@@ -322,305 +330,306 @@ kb.postEffect({ src: `
   }` });
 ```
 
-### Наклон клавиш и подписи
+### Key tilt and labels
 
-`kb.keyEffects({ селектор: стиль })` задаёт вид клавиш, `kb.keyEffects(null)` снимает. Селектор: подпись (`a`, `space`, `enter`),
-`letter`, `func` или `*`; важнее самый точный. Подходит и для вызова каждый кадр.
-`kb.keyboardEffect(стиль)` наклоняет всю клавиатуру, `null` снимает.
+`kb.keyEffects({ selector: style })` sets how the keys look, `kb.keyEffects(null)` removes it. A selector is a label (`a`, `space`, `enter`),
+`letter`, `func` or `*`; the most specific one wins. It is fine to call it every frame.
+`kb.keyboardEffect(style)` tilts the whole keyboard, `null` removes it.
 
-| Поле | Описание |
+| Field | Description |
 |---|---|
-| `rotationX`, `rotationY`, `rotationZ` | Поворот в градусах; X и Y до ±80 |
-| `scale`, `x`, `y`, `alpha` | Масштаб, сдвиг в dp, прозрачность |
-| `camera` | Расстояние камеры: меньше — сильнее перспектива (по умолчанию 8) |
-| `labelAlpha`, `labelBlur`, `labelX`, `labelY`, `labelScale` | Только подпись (буквы, не значки). `labelBlur` — Android 12+, остальное везде |
+| `rotationX`, `rotationY`, `rotationZ` | Rotation in degrees; X and Y up to ±80 |
+| `scale`, `x`, `y`, `alpha` | Scale, shift in dp, transparency |
+| `camera` | Camera distance: smaller means stronger perspective (default 8) |
+| `labelAlpha`, `labelBlur`, `labelX`, `labelY`, `labelScale` | The label only (letters, not icons). `labelBlur` needs Android 12+, the rest works everywhere |
 
 ```js
-// параллакс: сетка наклоняется вслед за телефоном (нужно "sensors")
+// parallax: the grid tilts after the phone (needs "sensors")
 kb.on("tilt", function (t) { kb.keyboardEffect({ rotationY: t.x * 12, rotationX: -t.y * 12, camera: 20 }); });
-// «испарение» буквы после нажатия: labelAlpha, labelBlur и labelY плавно меняются в событии frame
+// a letter "evaporating" after a press: labelAlpha, labelBlur and labelY change smoothly in the frame event
 ```
 
-Клавиши нажимаются там, где они нарисованы; при сильном наклоне всей клавиатуры это заметно.
+Keys are pressed where they are drawn; with a strong tilt of the whole keyboard this is noticeable.
 
-### Датчики, микрофон, приложение
+### Sensors, microphone, app
 
-| Функция | Описание |
+| Function | Description |
 |---|---|
 | `kb.tilt()` | `{ x, y, z }`. *sensors* |
-| `kb.audio.start()` / `stop()` / `level()` | Включить и выключить звук (`start` вернёт `false`, если у клавиатуры нет доступа к микрофону) / громкость 0..1. *microphone* |
-| `kb.appInfo()` | `{ package, name, color }` текущего приложения. *app_info* |
+| `kb.audio.start()` / `stop()` / `level()` | Turn the sound on and off (`start` returns `false` if the keyboard has no microphone access) / volume 0..1. *microphone* |
+| `kb.appInfo()` | `{ package, name, color }` of the current app. *app_info* |
 
-Скорость печати считается в обычном скрипте: замеряйте время между событиями `press`.
+Typing speed is counted in a plain script: measure the time between `press` events.
 
-## Данные, сеть, таймеры
+## Data, network, timers
 
-| Функция | Описание |
+| Function | Description |
 |---|---|
-| `kb.storage.get(key, def)` / `set(key, value)` / `remove(key)` / `keys()` / `clear()` | Хранилище мода (JSON, переживает перезапуск) |
-| `kb.asset(path)` | Файл из .zip: картинка → `data:` URI, остальное → текст |
-| `kb.http({ url, method, headers, body }, function (err, res) {})` | Только `https://`; `res = { status, ok, text, json }`. *network* |
-| `kb.translate(text, to, function (err, result) {})` | Перевод с автоопределением языка. *network* |
-| `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` | Таймеры (до 64 одновременно) |
-| `console.log`, `kb.log` | Запись в журнал мода |
-| `kb.http({ …, responseType: "base64" }, cb)` | Ответ файлом: `res.base64` (до 10 МБ) — например, картинка для `kb.commitImage` |
-| `kb.files.write(name, text)` / `append` / `read(name)` / `writeBase64` / `readBase64` / `exists` / `delete` / `list()` | Файлы мода: своя папка, имена `A-Z a-z 0-9 . _ -`, всего до 32 МБ |
+| `kb.storage.get(key, def)` / `set(key, value)` / `remove(key)` / `keys()` / `clear()` | The mod's storage (JSON, survives a restart) |
+| `kb.asset(path)` | A file from the .zip: an image → a `data:` URI, anything else → text |
+| `kb.http({ url, method, headers, body }, function (err, res) {})` | `https://` only; `res = { status, ok, text, json }`. *network* |
+| `kb.translate(text, to, function (err, result) {})` | Translation with automatic language detection. *network* |
+| `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` | Timers (up to 64 at the same time) |
+| `console.log`, `kb.log` | Write to the mod's log |
+| `kb.http({ …, responseType: "base64" }, cb)` | The response as a file: `res.base64` (up to 10 MB) — for example, an image for `kb.commitImage` |
+| `kb.files.write(name, text)` / `append` / `read(name)` / `writeBase64` / `readBase64` / `exists` / `delete` / `list()` | The mod's files: its own folder, names `A-Z a-z 0-9 . _ -`, up to 32 MB in total |
 
-Запросов `kb.http` — до 60 в минуту.
+`kb.http` is limited to 60 requests per minute.
 
-## Промисы
+## Promises
 
-В песочнице есть `Promise` и `.then()`; `async`/`await` и параметры по умолчанию движок не поддерживает. Готовые обёртки:
+The sandbox has `Promise` and `.then()`; `async`/`await` and default parameters are not supported by the engine. Ready-made wrappers:
 
-| Функция | Что возвращает |
+| Function | What it returns |
 |---|---|
-| `kb.fetch(url, { method, headers, body, responseType })` | Промис с ответом `kb.http` (*network*) |
-| `kb.ask(prompt, text)` | Промис с ответом ИИ (*ai*) |
-| `kb.translateAsync(text, to)` | Промис с переводом (*network*) |
-| `kb.input({ title, hint, value })` | Промис с введённым текстом (`null` — закрыли) |
-| `kb.sleep(ms)` | Промис, который выполнится через ms |
+| `kb.fetch(url, { method, headers, body, responseType })` | A promise with the `kb.http` response (*network*) |
+| `kb.ask(prompt, text)` | A promise with the AI answer (*ai*) |
+| `kb.translateAsync(text, to)` | A promise with the translation (*network*) |
+| `kb.input({ title, hint, value })` | A promise with the entered text (`null` — closed) |
+| `kb.sleep(ms)` | A promise that resolves after ms |
 
 ```js
 kb.fetch("https://api.github.com/zen").then(function (r) { kb.commit(r.text); }, function (e) { kb.toast(e.message); });
 ```
 
-## Звук, вибрация, голос
+## Sound, vibration, voice
 
-| Функция | Описание |
+| Function | Description |
 |---|---|
-| `kb.tone(hz, ms, { volume, wave })` | Синтезированный звук; `wave`: `sine`, `square`, `saw`, `triangle`, `noise` |
-| `kb.playAudio(src, { volume, loop })` / `kb.stopAudio(id)` | Звук из `data:audio/…` или файла .zip (до 8 МБ); без `id` — остановить все |
-| `kb.sound(name, volume)` | Системный звук клавиш: `standard`, `space`, `delete`, `enter`, `click` |
-| `kb.haptic(kind)` / `kb.haptic([мс, мс, …])` | Вибрация: `tick`, `click`, `heavy`, `double` или свой узор (пауза, вибрация, пауза…; до 6 с) |
-| `kb.speak(text, { lang, rate, pitch })` / `kb.stopSpeaking()` | Прочитать вслух системным синтезатором речи |
+| `kb.tone(hz, ms, { volume, wave })` | A synthesized sound; `wave`: `sine`, `square`, `saw`, `triangle`, `noise` |
+| `kb.playAudio(src, { volume, loop })` / `kb.stopAudio(id)` | A sound from `data:audio/…` or a .zip file (up to 8 MB); without `id` — stop all |
+| `kb.sound(name, volume)` | A system key sound: `standard`, `space`, `delete`, `enter`, `click` |
+| `kb.haptic(kind)` / `kb.haptic([ms, ms, …])` | Vibration: `tick`, `click`, `heavy`, `double` or your own pattern (pause, vibration, pause…; up to 6 s) |
+| `kb.speak(text, { lang, rate, pitch })` / `kb.stopSpeaking()` | Read aloud with the system speech synthesizer |
 
-## ИИ, ссылки, приложения
+## AI, links, apps
 
-| Функция | Описание |
+| Function | Description |
 |---|---|
-| `kb.ai({ prompt, text }, function (err, result) {})` | Запрос к ИИ, который настроен у пользователя (Gemini, Claude, OpenAI, Groq); до 10 в минуту. *ai* |
-| `kb.openUrl(url)` | Открыть `https:`, `http:`, `mailto:`, `tel:`, `sms:`, `geo:`, `market:`, `tg:`, `whatsapp:`. *launch* |
-| `kb.share(text)` | Окно «Поделиться». *launch* |
-| `kb.launchApp(package)` | Запустить приложение по имени пакета. *launch* |
+| `kb.ai({ prompt, text }, function (err, result) {})` | A request to the AI configured by the user (Gemini, Claude, OpenAI, Groq); up to 10 per minute. *ai* |
+| `kb.openUrl(url)` | Open `https:`, `http:`, `mailto:`, `tel:`, `sms:`, `geo:`, `market:`, `tg:`, `whatsapp:`. *launch* |
+| `kb.share(text)` | The "Share" sheet. *launch* |
+| `kb.launchApp(package)` | Launch an app by its package name. *launch* |
 
-## Словарь, эмодзи, устройство, другие моды
+## Dictionary, emoji, device, other mods
 
-| Функция | Описание |
+| Function | Description |
 |---|---|
-| `kb.dictionary.predict(word, previous, lang)` | Подсказки клавиатуры для слова |
-| `kb.dictionary.correct(word, lang)` | Автоисправление слова или `null` |
-| `kb.dictionary.learn(word, lang)` / `forget(word, lang)` | Выучить / забыть слово |
-| `kb.dictionary.nextLetters(prefix, lang)` | Вероятные следующие буквы: `{ "а": 0.3, … }` |
-| `kb.emoji.search(query, limit)` / `kb.emoji.recent()` | Поиск эмодзи (`[{ emoji, name }]`) / недавние |
+| `kb.dictionary.predict(word, previous, lang)` | The keyboard's suggestions for a word |
+| `kb.dictionary.correct(word, lang)` | The autocorrection of a word, or `null` |
+| `kb.dictionary.learn(word, lang)` / `forget(word, lang)` | Learn / forget a word |
+| `kb.dictionary.nextLetters(prefix, lang)` | Likely next letters: `{ "a": 0.3, … }` |
+| `kb.emoji.search(query, limit)` / `kb.emoji.recent()` | Emoji search (`[{ emoji, name }]`) / recent emoji |
 | `kb.device()` | `{ sdk, android, manufacturer, model, dark, landscape, screenWidth, screenHeight, locale, battery, charging, powerSave, appVersion, time, timezone }` |
-| `kb.mods()` | Включённые моды: `[{ id, name, version }]` |
-| `kb.broadcast(name, data)` | Сообщение другим модам (событие `message`) |
-| `kb.util.sha256(text)` / `sha1` / `md5` | Хэш строкой hex |
-| `kb.util.base64Encode` / `base64Decode` / `urlEncode` / `urlDecode` / `uuid()` / `now()` | Полезное |
-| `kb.util.formatDate(ms, "dd.MM.yyyy HH:mm")` | Дата в своём формате |
-| `kb.util.transform(name, text, { prefix, suffix, pattern, replacement })` | Любое преобразование из `transform`: `upper`, `translit`, `layout_swap`, `calc`, `bold`… |
-| `atob` / `btoa` | Base64, как в браузере |
+| `kb.mods()` | The enabled mods: `[{ id, name, version }]` |
+| `kb.broadcast(name, data)` | A message to other mods (the `message` event) |
+| `kb.util.sha256(text)` / `sha1` / `md5` | A hash as a hex string |
+| `kb.util.base64Encode` / `base64Decode` / `urlEncode` / `urlDecode` / `uuid()` / `now()` | Useful helpers |
+| `kb.util.formatDate(ms, "dd.MM.yyyy HH:mm")` | A date in your own format |
+| `kb.util.transform(name, text, { prefix, suffix, pattern, replacement })` | Any transform from `transform`: `upper`, `translit`, `layout_swap`, `calc`, `bold`… |
+| `atob` / `btoa` | Base64, as in a browser |
 
-## Настройки мода
+## Mod settings
+
 
 ```json
 "config": [
-  { "id": "greeting", "title": "Приветствие", "type": "text", "default": "Привет" },
-  { "id": "loud", "title": "Со звуком", "type": "toggle", "default": true },
-  { "id": "speed", "title": "Скорость", "type": "slider", "min": 1, "max": 10, "step": 1, "default": 5 },
-  { "id": "style", "title": "Стиль", "type": "choice", "default": "cat",
-    "choices": [{ "id": "cat", "title": "Кот" }, { "id": "dog", "title": "Пёс" }],
-    "description": "Кто бегает по клавишам" }
+  { "id": "greeting", "title": "Greeting", "type": "text", "default": "Hello" },
+  { "id": "loud", "title": "With sound", "type": "toggle", "default": true },
+  { "id": "speed", "title": "Speed", "type": "slider", "min": 1, "max": 10, "step": 1, "default": 5 },
+  { "id": "style", "title": "Style", "type": "choice", "default": "cat",
+    "choices": [{ "id": "cat", "title": "Cat" }, { "id": "dog", "title": "Dog" }],
+    "description": "Who runs over the keys" }
 ]
 ```
 
-Настройки видны в карточке мода (**Настройки → Плагины и моды**). Всего до 300 элементов. В скрипте — `kb.config("loud")`,
-`kb.config()` (все сразу), `kb.setConfig("loud", false)`, `kb.setConfigs({ loud: false, speed: 3 })`; изменение приходит
-событием `option`. Карточка сразу показывает значения, заданные из скрипта. Значение приводится к типу настройки: `1` в
-переключателе — это «включено». Если повторно задать то же значение, события не будет.
+The settings are shown in the mod's card (**Settings → Plugins and mods**). Up to 300 items in total. In the script use `kb.config("loud")`,
+`kb.config()` (all at once), `kb.setConfig("loud", false)`, `kb.setConfigs({ loud: false, speed: 3 })`; a change arrives
+as an `option` event. The card immediately shows values set from the script. A value is converted to the type of the setting: `1` in
+a toggle means "on". Setting the same value again produces no event.
 
-| `type` | Что это |
+| `type` | What it is |
 |---|---|
-| `toggle`, `slider`, `choice`, `text` | Переключатель, ползунок, выбор, строка |
-| `textarea` | Многострочное поле, например для вставки пресета: до 256 КБ, необязательно `hint` |
-| `color` | Цвет `#RRGGBB` с образцом |
-| `preset` | Кнопка: задаёт сразу все настройки из `values`. Работает, даже если мод ещё не запущен |
-| `button` | Кнопка: мод получает событие `option` с её `id` |
-| `info` | Просто текст (`title`) |
-| `tab` | Новая вкладка: всё дальше попадает в неё, `id` не нужен |
-| `section` | Сворачиваемый раздел: `collapsed: true` — свёрнут сначала, `id` не нужен |
+| `toggle`, `slider`, `choice`, `text` | A switch, a slider, a choice, a line of text |
+| `textarea` | A multi-line field, for example for pasting a preset: up to 256 KB, optional `hint` |
+| `color` | A `#RRGGBB` color with a swatch |
+| `preset` | A button: sets all the settings from `values` at once. Works even if the mod is not running yet |
+| `button` | A button: the mod receives an `option` event with its `id` |
+| `info` | Plain text (`title`) |
+| `tab` | A new tab: everything after it goes into it, no `id` needed |
+| `section` | A collapsible section: `collapsed: true` — collapsed at first, no `id` needed |
 
-У любой настройки есть `showIf`: показывать, только если включена другая (`"fire"`), выключена (`"!fire"`) или равна
-значению (`"style=cat"`).
+Any setting can have `showIf`: show it only if another one is on (`"fire"`), off (`"!fire"`) or equal to
+a value (`"style=cat"`).
 
 ```json
 "config": [
-  { "type": "tab", "title": "Огонь" },
-  { "id": "fire", "title": "Огонь", "type": "toggle" },
-  { "type": "section", "title": "Тонкая настройка", "collapsed": true },
-  { "id": "heat", "title": "Жар", "type": "slider", "min": 0, "max": 10, "default": 5, "showIf": "fire" },
-  { "type": "tab", "title": "Пресеты" },
-  { "id": "dev", "type": "preset", "title": "Разработчик", "values": { "fire": true, "heat": 10 } },
-  { "id": "import", "title": "Вставить пресет", "type": "textarea", "hint": "{ \"fire\": true }" }
+  { "type": "tab", "title": "Fire" },
+  { "id": "fire", "title": "Fire", "type": "toggle" },
+  { "type": "section", "title": "Fine tuning", "collapsed": true },
+  { "id": "heat", "title": "Heat", "type": "slider", "min": 0, "max": 10, "default": 5, "showIf": "fire" },
+  { "type": "tab", "title": "Presets" },
+  { "id": "dev", "type": "preset", "title": "Developer", "values": { "fire": true, "heat": 10 } },
+  { "id": "import", "title": "Paste a preset", "type": "textarea", "hint": "{ \"fire\": true }" }
 ]
 ```
 
-Чтобы поле `import` работало как пресет, разберите текст в моде:
+For the `import` field to work as a preset, parse the text in the mod:
 `kb.on("option", function (e) { if (e.id === "import") kb.setConfigs(JSON.parse(e.value)); });`
 
-Версия API — `kb.apiVersion` (сейчас 4).
+The API version is `kb.apiVersion` (currently 4).
 
-## Значки
+## Icons
 
-Везде, где есть `icon` (плагин, действие, кнопка, панель, элемент), можно указать:
-- эмодзи или короткий текст: `"🚀"`, `"Aa"`;
-- `"@имя"` — встроенный значок: `@layout_swap`, `@globe`, `@backspace`, `@enter`, `@shift`, `@grid`, `@translate`, `@search`,
+Everywhere there is an `icon` (a plugin, an action, a button, a panel, an element) you can use:
+- an emoji or a short text: `"🚀"`, `"Aa"`;
+- `"@name"` — a built-in icon: `@layout_swap`, `@globe`, `@backspace`, `@enter`, `@shift`, `@grid`, `@translate`, `@search`,
   `@star`, `@heart`, `@settings`, `@mic`, `@clipboard`, `@copy`, `@cut`, `@undo`, `@redo`, `@calc`, `@text`, `@code`, `@link`,
   `@time`, `@date`, `@music`, `@image`, `@bolt`, `@magic`, `@note`, `@list`, `@check`, `@close`, `@refresh`, `@send`, `@case`,
   `@select_all`, `@lock`, `@emoji`, `@gif`, `@games`, `@dice`, `@palette`, `@extension`, `@keyboard`, `@language`, `@add`,
   `@delete`, `@edit`, `@share`, `@home`, `@person`, `@mail`;
-- картинку `"data:image/png;base64,…"` (добавьте `#tint` в конце, чтобы перекрасить её в цвет темы).
+- an image `"data:image/png;base64,…"` (add `#tint` at the end to recolor it with the theme color).
 
-## icons: замена иконок клавиатуры
+## icons: replacing keyboard icons
 
 ```json
 "icons": { "mic": "🎙️", "globe": "🌍", "backspace": "icons/back.png", "emoji_cat_0": "🙂" }
 ```
 
-Слоты: `menu`, `back`, `mic`, `plugins`, `translate`, `gif`, `clipboard`, `emoji`, `one_handed`, `incognito`, `settings`,
+Slots: `menu`, `back`, `mic`, `plugins`, `translate`, `gif`, `clipboard`, `emoji`, `one_handed`, `incognito`, `settings`,
 `hide`, `layout_swap`, `globe`, `emoji_key`, `shift`, `caps`, `backspace`, `enter`, `go`, `send`, `search`, `done`,
-`emoji_recent`, `emoji_cat_0` … `emoji_cat_6`. Значение — эмодзи/текст, `data:image/…` или путь к картинке в .zip.
-Иконки, выбранные пользователем в **Настройки → Иконки и эмодзи**, важнее иконок из плагинов.
+`emoji_recent`, `emoji_cat_0` … `emoji_cat_6`. The value is an emoji/text, `data:image/…` or a path to an image in the .zip.
+Icons chosen by the user in **Settings → Icons and emoji** take priority over icons from plugins.
 
-## languages: свой язык
+## languages: your own language
 
 ```json
 "languages": [{
-  "id": "cv", "name": "Чӑвашла", "title": "Чувашский", "label": "CV", "locale": "cv-RU",
+  "id": "cv", "name": "Чӑвашла", "title": "Chuvash", "label": "CV", "locale": "cv-RU",
   "rows": ["йцукенгшщзхӑ", "фывапролджэӗ", "ячсмитьбюҫӳ"],
   "variants": { "е": ["ё", "ӗ"] }
 }]
 ```
 
-Shift и ⌫ добавляются в последний ряд сами. Необязательные поля: `shift` (`{ "क": "ख" }` — что вводит клавиша с Shift
-у письменностей без заглавных), `dictionary` (код частотного словаря FrequencyWords, если он есть), `rtl`, `autoCorrect`.
-Язык появляется в **Настройки → Языки и словари**.
+Shift and ⌫ are added to the last row automatically. Optional fields: `shift` (`{ "क": "ख" }` — what the key types with Shift
+for scripts without capital letters), `dictionary` (the code of a FrequencyWords frequency dictionary, if there is one), `rtl`, `autoCorrect`.
+The language appears in **Settings → Languages and dictionaries**.
 
-## dictionary: слова для подсказок
-
-```json
-"dictionary": { "ru": ["кринж", "имхо", "лол"] }
-```
-
-Слова из словаря плагина не исправляются автоисправлением и появляются в подсказках.
-
-## actions: кнопки на панели плагинов (до 64)
-
-Общие поля действия: `title` (обязательно), `icon`, `type`, `pinned`.
-`"pinned": true` выносит кнопку прямо на панель инструментов клавиатуры (рядом с 🧩).
-
-### `insert`: вставить текст по шаблону
+## dictionary: words for suggestions
 
 ```json
-{ "title": "Подпись", "type": "insert", "text": "С уважением,{newline}Иван" }
+"dictionary": { "en": ["cringe", "imho", "lol"] }
 ```
 
-### `transform`: преобразовать текст
+Words from a plugin dictionary are not changed by autocorrect and appear in the suggestions.
 
-Что преобразуется, задаёт `scope`:
-- `auto` (по умолчанию): выделение, а если его нет — последнее слово перед курсором;
-- `word`: последнее слово;
-- `text`: весь текст поля;
-- `selection`: только выделение.
+## actions: buttons on the plugins panel (up to 64)
 
-| `transform` | Что делает |
+Common action fields: `title` (required), `icon`, `type`, `pinned`.
+`"pinned": true` puts the button right on the keyboard toolbar (next to 🧩).
+
+### `insert`: insert text from a template
+
+```json
+{ "title": "Signature", "type": "insert", "text": "Best regards,{newline}John" }
+```
+
+### `transform`: transform text
+
+What gets transformed is set by `scope`:
+- `auto` (default): the selection, or, if there is none, the last word before the cursor;
+- `word`: the last word;
+- `text`: the whole text of the field;
+- `selection`: the selection only.
+
+| `transform` | What it does |
 |---|---|
-| `upper` / `lower` | ВЕРХНИЙ / нижний регистр |
-| `title` / `sentence` | Каждое Слово / Как в предложении |
-| `reverse` | Задом наперёд |
-| `mock` | сАрКаЗм |
-| `wrap` | Обернуть: поля `prefix`, `suffix` |
-| `regex` | Замена: поля `pattern`, `replacement` (группы `$1`) |
-| `trim` | Убрать лишние пробелы |
-| `sort_lines` / `unique_lines` | Сортировать строки / убрать повторы |
+| `upper` / `lower` | UPPER / lower case |
+| `title` / `sentence` | Every Word / As in a sentence |
+| `reverse` | Backwards |
+| `mock` | sArCaSm |
+| `wrap` | Wrap: fields `prefix`, `suffix` |
+| `regex` | Replace: fields `pattern`, `replacement` (groups `$1`) |
+| `trim` | Remove extra spaces |
+| `sort_lines` / `unique_lines` | Sort lines / remove duplicates |
 | `base64_encode` / `base64_decode` | Base64 |
-| `url_encode` / `url_decode` | URL-кодирование |
-| `translit` | Кириллица → латиница |
-| `layout_swap` | Исправить раскладку: `ghbdtn` → `привет` |
-| `strike` | З̶а̶ч̶е̶р̶к̶н̶у̶т̶ь̶ |
-| `spaced` | р а з р я д к а |
-| `calc` | `2+2*3` → `2+2*3 = 8` (`+ - * / ^ %`, скобки, `×` `÷`, запятая) |
-| `camel` / `snake` / `kebab` | `мой новый файл` → `мойНовыйФайл` / `мой_новый_файл` / `мой-новый-файл` |
-| `bold` / `italic` | 𝗕𝗼𝗹𝗱 / 𝘐𝘵𝘢𝘭𝘪𝘤 — только латиница и цифры (символы Unicode) |
-| `superscript` | `x2` → `x²` (цифры, `+ - = ( ) n i`) |
+| `url_encode` / `url_decode` | URL encoding |
+| `translit` | Cyrillic → Latin |
+| `layout_swap` | Fix the keyboard layout: `ghbdtn` → `привет` |
+| `strike` | S̶t̶r̶i̶k̶e̶ ̶t̶h̶r̶o̶u̶g̶h̶ |
+| `spaced` | s p a c e d |
+| `calc` | `2+2*3` → `2+2*3 = 8` (`+ - * / ^ %`, parentheses, `×` `÷`, comma) |
+| `camel` / `snake` / `kebab` | `my new file` → `myNewFile` / `my_new_file` / `my-new-file` |
+| `bold` / `italic` | 𝗕𝗼𝗹𝗱 / 𝘐𝘵𝘢𝘭𝘪𝘤 — Latin letters and digits only (Unicode characters) |
+| `superscript` | `x2` → `x²` (digits, `+ - = ( ) n i`) |
 
-### `key`: системная клавиша или команда
+### `key`: a system key or command
 
 `tab`, `enter`, `left`, `right`, `up`, `down`, `home`, `end`, `select_all`, `copy`, `cut`, `paste`,
 `undo`, `redo`, `delete_word`, `escape`.
 
 ```json
-{ "title": "Выделить всё", "type": "key", "key": "select_all" }
+{ "title": "Select all", "type": "key", "key": "select_all" }
 ```
 
-### `http`: запрос к своему серверу
+### `http`: a request to your own server
 
-Нужно `"permissions": ["network"]`. Разрешены только `https://` адреса. При установке такого плагина
-клавиатура предупреждает, что он отправляет текст в сеть. Запрос уходит только по нажатию кнопки.
+Requires `"permissions": ["network"]`. Only `https://` addresses are allowed. When such a plugin is installed,
+the keyboard warns that it sends text to the network. A request is sent only when the button is pressed.
 
-| Поле | Описание |
+| Field | Description |
 |---|---|
-| `url` | Шаблон адреса; подстановки в нём URL-кодируются |
-| `method` | `GET` (по умолчанию) или `POST` |
-| `body` | Тело для `POST` (шаблон) |
-| `headers` | Объект заголовков (значения — шаблоны) |
-| `jsonPath` | Путь к ответу в JSON: `data.0.text`. Пусто — весь ответ как текст |
-| `output` | `replace` (заменить исходный текст, по умолчанию) или `insert` |
-| `scope` | Как у `transform` |
+| `url` | The address template; substitutions in it are URL-encoded |
+| `method` | `GET` (default) or `POST` |
+| `body` | The body for `POST` (a template) |
+| `headers` | An object of headers (values are templates) |
+| `jsonPath` | The path to the answer in the JSON: `data.0.text`. Empty — the whole response as text |
+| `output` | `replace` (replace the source text, default) or `insert` |
+| `scope` | The same as for `transform` |
 
 ```json
 {
-  "title": "В эмодзи", "type": "http",
+  "title": "To emoji", "type": "http",
   "url": "https://example.com/api/emojify?q={text}",
   "jsonPath": "result"
 }
 ```
 
-## Шаблоны
+## Templates
 
-Работают в `insert`, `shortcuts`, `url`, `body` и `headers`:
+They work in `insert`, `shortcuts`, `url`, `body` and `headers`:
 
-| Подстановка | Значение |
+| Substitution | Value |
 |---|---|
-| `{date}`, `{time}`, `{datetime}` | Текущие дата и время |
-| `{date:yyyy-MM-dd}` | Дата в своём формате (`SimpleDateFormat`) |
-| `{text}` / `{selection}` | Выделенный текст (в `http` — исходный текст по `scope`) |
-| `{clipboard}` | Последнее скопированное |
-| `{random:да\|нет\|может быть}` | Случайный вариант |
-| `{uuid}` | Случайный UUID |
-| `{newline}` | Перенос строки |
+| `{date}`, `{time}`, `{datetime}` | The current date and time |
+| `{date:yyyy-MM-dd}` | A date in your own format (`SimpleDateFormat`) |
+| `{text}` / `{selection}` | The selected text (in `http` — the source text according to `scope`) |
+| `{clipboard}` | The last copied text |
+| `{random:yes\|no\|maybe}` | A random option |
+| `{uuid}` | A random UUID |
+| `{newline}` | A line break |
 
-## shortcuts: автозамена по пробелу (до 500)
+## shortcuts: autoreplace on space (up to 500)
 
 ```json
-"shortcuts": { "спс": "спасибо", ":date": "{date}", "<3": "❤️" }
+"shortcuts": { "ty": "thank you", ":date": "{date}", "<3": "❤️" }
 ```
 
-Регистр триггера не важен. Сокращение из одних букв ещё и появляется в строке подсказок, пока вы его набираете.
+The case of the trigger does not matter. A shortcut made only of letters also appears in the suggestion bar while you type it.
 
-## symbols: наборы символов (до 20 наборов по 2000 элементов)
+## symbols: symbol sets (up to 20 sets of 2000 items)
 
 ```json
 "symbols": [
-  { "title": "Каомодзи", "icon": "ツ", "items": ["(◕‿◕)", "¯\\_(ツ)_/¯"] }
+  { "title": "Kaomoji", "icon": "ツ", "items": ["(◕‿◕)", "¯\\_(ツ)_/¯"] }
 ]
 ```
 
-Каждый набор открывается отдельной вкладкой на панели плагинов.
+Each set opens as a separate tab on the plugins panel.
 
-## theme: тема
+## theme: a theme
 
-Применяется кнопкой «Применить оформление» в карточке плагина и записывается в настройки.
+It is applied by the "Apply look" button in the plugin card and written into the settings.
 
 ```json
 "theme": {
@@ -635,16 +644,16 @@ Shift и ⌫ добавляются в последний ряд сами. Не�
 }
 ```
 
-- `mode`: `SYSTEM`, `LIGHT`, `DARK` или `AMOLED`.
-- `shape`: `COOKIE_12`, `WAVY_8`, `FLOWER_6`, `CLOVER_4`, `CIRCLE` или любая форма Material 3: `SQUARE`, `SLANTED`, `ARCH`, `SEMICIRCLE`, `OVAL`, `PILL`, `TRIANGLE`, `ARROW`, `FAN`, `DIAMOND`, `CLAMSHELL`, `PENTAGON`, `GEM`, `VERY_SUNNY`, `COOKIE_4`, `COOKIE_6`, `COOKIE_7`, `COOKIE_9`, `CLOVER_8`, `BURST`, `SOFT_BURST`, `BOOM`, `SOFT_BOOM`, `PUFFY`, `PUFFY_DIAMOND`, `GHOSTISH`, `PIXEL_CIRCLE`, `PIXEL_TRIANGLE`, `BUN`, `HEART`.
-- Цвета пишутся как `#RRGGBB` или `#AARRGGBB`. Если цвет не указан, он берётся из темы.
+- `mode`: `SYSTEM`, `LIGHT`, `DARK` or `AMOLED`.
+- `shape`: `COOKIE_12`, `WAVY_8`, `FLOWER_6`, `CLOVER_4`, `CIRCLE` or any Material 3 shape: `SQUARE`, `SLANTED`, `ARCH`, `SEMICIRCLE`, `OVAL`, `PILL`, `TRIANGLE`, `ARROW`, `FAN`, `DIAMOND`, `CLAMSHELL`, `PENTAGON`, `GEM`, `VERY_SUNNY`, `COOKIE_4`, `COOKIE_6`, `COOKIE_7`, `COOKIE_9`, `CLOVER_8`, `BURST`, `SOFT_BURST`, `BOOM`, `SOFT_BOOM`, `PUFFY`, `PUFFY_DIAMOND`, `GHOSTISH`, `PIXEL_CIRCLE`, `PIXEL_TRIANGLE`, `BUN`, `HEART`.
+- Colors are written as `#RRGGBB` or `#AARRGGBB`. If a color is not given, it is taken from the theme.
 
-Кнопка в карточке плагина называется **«Применить оформление»**: она применяет `theme`, `settings` и включает `skin`
-одним нажатием. «Снять оформление» возвращает обычный вид Material 3 Expressive.
+The button in the plugin card is called **"Apply look"**: it applies `theme` and `settings` and turns on `skin`
+with a single tap. "Remove look" returns the normal Material 3 Expressive look.
 
-## skin: как рисовать каждую клавишу
+## skin: how to draw every key
 
-`skin` не трогает настройки — он рисует клавиатуру поверх них, пока включён. Одновременно активен один skin.
+`skin` does not touch the settings — it draws the keyboard on top of them while it is on. Only one skin is active at a time.
 
 ```json
 "skin": {
@@ -661,103 +670,103 @@ Shift и ⌫ добавляются в последний ряд сами. Не�
     "func":   { "glass": { "frost": 0.4 } },
     "enter":  { "background": { "colors": ["#8AB4FF", "#B388FF"], "angle": 135 }, "shape": "pill" },
     "space":  { "label": "␣" },
-    "key:я":  { "material": "solid", "background": "#FF7A3D", "glow": "#FF7A3D" }
+    "key:a":  { "material": "solid", "background": "#FF7A3D", "glow": "#FF7A3D" }
   },
   "popup": { "material": "glass", "pressedBackground": "#8AB4FF" },
   "chips": { "material": "glass", "text": "#FFFFFF" }
 }
 ```
 
-### keyboard — фон и общее
+### keyboard — background and general
 
-| Поле | Описание |
+| Field | Description |
 |---|---|
-| `background` | Цвет или градиент фона клавиатуры |
-| `orbs` | До 12 мягких цветных пятен: `color`, `x`/`y` (0..1 от размера клавиатуры), `r` (радиус, доля) |
-| `corner` | Скругление верхних углов клавиатуры, dp |
-| `font` | `serif`, `mono`, `sans`, `cursive`, `pixel` (пиксельный Pixelify Sans) — шрифт подписей |
-| `trail` | Цвет следа при печати свайпом |
+| `background` | A color or gradient for the keyboard background |
+| `orbs` | Up to 12 soft colored spots: `color`, `x`/`y` (0..1 of the keyboard size), `r` (radius, a fraction) |
+| `corner` | The rounding of the top corners of the keyboard, dp |
+| `font` | `serif`, `mono`, `sans`, `cursive`, `pixel` (the pixel font Pixelify Sans) — the font of the labels |
+| `trail` | The color of the trail when typing by swiping |
 
-`colors` — те же ключи, что у `theme.colors`, но действуют только пока включён skin.
+`colors` — the same keys as `theme.colors`, but they take effect only while the skin is on.
 
-### keys — стили клавиш
+### keys — key styles
 
-Селекторы применяются по порядку, следующий перекрывает предыдущий:
-`*` → `letter` (буквы и символы) или `func` (shift, ⌫, ?123, 🌐, 😀) → `digit` → `shift` / `backspace` / `mode` /
-`globe` / `emoji` / `space` / `enter` → `key:<буква>` (например `key:a`, `key:я`).
+Selectors are applied in order, and each next one overrides the previous one:
+`*` → `letter` (letters and symbols) or `func` (shift, ⌫, ?123, 🌐, 😀) → `digit` → `shift` / `backspace` / `mode` /
+`globe` / `emoji` / `space` / `enter` → `key:<letter>` (for example `key:a`, `key:z`).
 
-| Поле | Значения |
+| Field | Values |
 |---|---|
-| `material` | `solid` (по умолчанию), `glass` — жидкое стекло, `outline` — контур, `neumorph` — выпуклая, `bevel` — объёмная пиксельная кнопка (светлая кромка сверху слева, тёмная снизу справа, как в Minecraft), `none` — без фона |
-| `background` / `pressedBackground` | Цвет или градиент в покое / при нажатии |
-| `text` / `pressedText` | Цвет подписи |
-| `textGlow` | Свечение подписи |
-| `border`, `borderWidth` | Цвет/градиент и толщина контура, dp |
-| `borderStyle` | `solid`, `dots` — контур из точек (как у Nothing), `dashed` — пунктир |
-| `labelEffect` | `dots` — буквы из точек, как на точечной матрице; `none` — обычные |
-| `textShadow` | Жёсткая тень подписи без размытия (как текст в Minecraft) |
-| `bevel` | Толщина объёмной кромки у `material: bevel`, dp |
-| `shape` | `rounded`, `pill`, `cut` (срезанные углы), `squircle`, `wavy` |
-| `radius` / `pressedRadius` | Скругление в покое / при нажатии, dp (форма «перетекает») |
-| `shadow`, `shadowY`, `shadowColor` | Мягкая тень: размытие и сдвиг в dp (Android 9+) |
-| `glow` | Свечение вокруг клавиши: у `outline` горит всегда, у остальных — при нажатии |
-| `press` | `scale`, `jelly` (желе с покачиванием), `bounce` (увеличение), `sink` (вдавливание), `none` |
-| `pressScale` | Масштаб при нажатии для `scale`/`bounce`, 0.6..1.3 |
-| `inset` | Отступ внутрь ячейки, dp |
-| `label` | Своя подпись (для служебных клавиш вместо значка) |
-| `fontScale`, `fontWeight`, `italic` | Размер (множитель), насыщенность 100..900, курсив |
-| `hideHint` | Скрыть маленькую подсказку в углу |
-| `glass` | Настройки стекла, см. ниже |
+| `material` | `solid` (default), `glass` — liquid glass, `outline` — an outline, `neumorph` — raised, `bevel` — a 3D pixel button (a light edge at the top left, a dark one at the bottom right, as in Minecraft), `none` — no background |
+| `background` / `pressedBackground` | A color or gradient at rest / when pressed |
+| `text` / `pressedText` | The label color |
+| `textGlow` | A glow around the label |
+| `border`, `borderWidth` | The outline color/gradient and thickness, dp |
+| `borderStyle` | `solid`, `dots` — an outline made of dots (as in Nothing), `dashed` — a dashed line |
+| `labelEffect` | `dots` — letters made of dots, like on a dot matrix display; `none` — normal |
+| `textShadow` | A hard label shadow with no blur (like text in Minecraft) |
+| `bevel` | The thickness of the 3D edge for `material: bevel`, dp |
+| `shape` | `rounded`, `pill`, `cut` (cut corners), `squircle`, `wavy` |
+| `radius` / `pressedRadius` | The rounding at rest / when pressed, dp (the shape "flows") |
+| `shadow`, `shadowY`, `shadowColor` | A soft shadow: blur and shift in dp (Android 9+) |
+| `glow` | A glow around the key: for `outline` it is always on, for the others — when pressed |
+| `press` | `scale`, `jelly` (jelly with a wobble), `bounce` (enlarging), `sink` (pressing in), `none` |
+| `pressScale` | The scale when pressed for `scale`/`bounce`, 0.6..1.3 |
+| `inset` | The inner margin of the cell, dp |
+| `label` | Your own label (for function keys, instead of an icon) |
+| `fontScale`, `fontWeight`, `italic` | Size (a multiplier), weight 100..900, italic |
+| `hideHint` | Hide the small hint in the corner |
+| `glass` | Glass settings, see below |
 
-### glass — жидкое стекло
+### glass — liquid glass
 
-Стекло видит фон клавиатуры (градиент, `orbs`, фоновую картинку) и преломляет его по краям.
-На Android 13+ это настоящее преломление шейдером с радужной каймой, на старых версиях — увеличенная размытая подложка.
+The glass sees the keyboard background (a gradient, `orbs`, a background picture) and refracts it at the edges.
+On Android 13+ this is real shader refraction with a rainbow fringe; on older versions it is an enlarged blurred backing.
 
-| Поле | По умолчанию | Описание |
+| Field | Default | Description |
 |---|---|---|
-| `blur` | 14 | Размытие фона, dp |
-| `refraction` | 0.6 | Сила преломления по краям, 0..1 |
-| `dispersion` | 0.25 | Радужная кайма, 0..1 |
-| `highlight` | 0.7 | Блик сверху |
-| `rim` | 0.7 | Светлый ободок |
-| `frost` | 0 | Матовость: молочная дымка — клавиша выглядит размытее фона |
-| `grain` | 0 | Зерно матового стекла |
-| `tint` | — | Цвет тонировки (лучше полупрозрачный, `#33FFFFFF`) |
+| `blur` | 14 | Background blur, dp |
+| `refraction` | 0.6 | The strength of refraction at the edges, 0..1 |
+| `dispersion` | 0.25 | The rainbow fringe, 0..1 |
+| `highlight` | 0.7 | The highlight at the top |
+| `rim` | 0.7 | A light rim |
+| `frost` | 0 | Frostiness: a milky haze — the key looks blurrier than the background |
+| `grain` | 0 | The grain of frosted glass |
+| `tint` | — | The tint color (better semi-transparent, `#33FFFFFF`) |
 
-Если задан `background`, он рисуется поверх стекла как тонировка — используйте полупрозрачные цвета.
+If `background` is set, it is drawn on top of the glass as a tint — use semi-transparent colors.
 
-### popup и chips
+### popup and chips
 
-`popup` — всплывающая буква и варианты: `background`, `pressedBackground` (выбранный вариант), `text`, `pressedText`,
-`material: glass`, `border`, `radius` (с ним вместо волнистой «печеньки» рисуется скруглённый прямоугольник).
-`chips` — подсказки и панель инструментов: `background`, `pressedBackground` (средняя подсказка),
-`text`, `pressedText`, `border`, `borderWidth`, `material: glass`; `material: none` — подсказки просто текстом
-через тонкие разделители, как в Gboard и iOS.
+`popup` — the letter preview and variants: `background`, `pressedBackground` (the chosen variant), `text`, `pressedText`,
+`material: glass`, `border`, `radius` (with it, a rounded rectangle is drawn instead of the wavy "cookie").
+`chips` — suggestions and the toolbar: `background`, `pressedBackground` (the middle suggestion),
+`text`, `pressedText`, `border`, `borderWidth`, `material: glass`; `material: none` — suggestions as plain text
+with thin dividers, as in Gboard and iOS.
 
-### buttons — кнопки по краям строки подсказок
+### buttons — buttons at the edges of the suggestion bar
 
-Меню и микрофон. Тот же формат, что у клавиш: `material` (`none` — только значок, `solid`, `glass`, `outline`,
-`neumorph`), `background`, `pressedBackground`, `text` (цвет значка), `border`, `glow`, `shadow`. Без `buttons`
-кнопки рисуются волнистыми «печеньками» в цвет акцента.
+The menu and the microphone. The same format as for keys: `material` (`none` — the icon only, `solid`, `glass`, `outline`,
+`neumorph`), `background`, `pressedBackground`, `text` (the icon color), `border`, `glow`, `shadow`. Without `buttons`
+the buttons are drawn as wavy "cookies" in the accent color.
 
-### panel — подложка панелей
+### panel — the backing of panels
 
-Эмодзи, буфер обмена, голосовой ввод, переводчик, GIF и вкладки плагинов. Формат как у клавиш: `material`
+Emoji, clipboard, voice input, translator, GIF and plugin tabs. The format is the same as for keys: `material`
 (`solid`, `glass`, `outline`, `neumorph`), `background`, `border`, `borderWidth`, `shadow`, `shadowColor`, `radius`, `inset`.
-Без `panel` панели рисуются тональной подложкой со скруглением 24.
+Without `panel` the panels are drawn on a tonal backing with a rounding of 24.
 
-### Размытие под клавиатурой
+### Blur under the keyboard
 
-`keyboard.windowBlur` — радиус (dp), с которым клавиатура размывает приложение под собой, `keyboard.blurTint` — дымка
-поверх размытия (полупрозрачный цвет). Работает на Android 12+, если система разрешает размытие окон (не в режиме
-энергосбережения); иначе рисуется обычный фон `keyboard.background`. Стеклянные клавиши при размытии показывают
-матовое стекло с бликом и ободком.
+`keyboard.windowBlur` — the radius (dp) with which the keyboard blurs the app under it, `keyboard.blurTint` — a haze
+on top of the blur (a semi-transparent color). It works on Android 12+ if the system allows window blur (not in
+power saving mode); otherwise the normal `keyboard.background` is drawn. Glass keys show frosted glass
+with a highlight and a rim when the blur is on.
 
-### dark — тёмная тема
+### dark — the dark theme
 
-Объект с теми же разделами (`keyboard`, `colors`, `keys`, `popup`, `chips`, `buttons`), который накладывается
-поверх оформления, когда включена тёмная тема. Указывайте только то, что отличается:
+An object with the same sections (`keyboard`, `colors`, `keys`, `popup`, `chips`, `buttons`) that is laid over
+the skin when the dark theme is on. Specify only what is different:
 
 ```json
 "colors": { "background": "#D1D4DA", "key": "#FFFFFF", "keyText": "#1C1C1E" },
@@ -767,71 +776,71 @@ Shift и ⌫ добавляются в последний ряд сами. Не�
 }
 ```
 
-### Градиенты и узоры
+### Gradients and patterns
 
-Цвет — строка `"#RRGGBB"`. Градиент — массив `["#..", "#.."]` (сверху вниз) или объект
-`{ "colors": [...], "angle": 135, "type": "radial" }`. Угол: 0 — слева направо, 90 — сверху вниз.
+A color is a string `"#RRGGBB"`. A gradient is an array `["#..", "#.."]` (top to bottom) or an object
+`{ "colors": [...], "angle": 135, "type": "radial" }`. Angle: 0 — left to right, 90 — top to bottom.
 
-Узор — объект с `pattern`: `{ "pattern": "pixels", "colors": ["#6F6F6F", "#7A7A7A", "#646464"], "cell": 3, "seed": 5 }`.
-`pixels` — случайные квадратные клетки из цветов (первый встречается чаще всего: камень, земля), `planks` — доски с
-щелями и прожилками, `dots` — точки `colors[1]` на фоне `colors[0]` (точечная сетка). `cell` — размер клетки, dp;
-`seed` — другой рисунок того же узора. Узор подходит для фона клавиатуры, клавиш, кнопок и панелей.
+A pattern is an object with `pattern`: `{ "pattern": "pixels", "colors": ["#6F6F6F", "#7A7A7A", "#646464"], "cell": 3, "seed": 5 }`.
+`pixels` — random square cells of the given colors (the first one is the most common: stone, dirt), `planks` — boards with
+gaps and grain, `dots` — dots of `colors[1]` on a background of `colors[0]` (a dot grid). `cell` — the cell size, dp;
+`seed` — a different picture of the same pattern. A pattern suits the keyboard background, keys, buttons and panels.
 
-### options — настройки темы
+### options — theme settings
 
-У каждой темы могут быть свои настройки: они появляются в «Темы» → «Настройки темы». Выбор и переключатели —
-заплатки JSON поверх оформления (объекты сливаются, остальное заменяется), ползунки меняют числа:
+Every theme can have its own settings: they appear in "Themes" → "Theme settings". Choices and switches are
+JSON patches laid over the skin (objects are merged, everything else is replaced), sliders change numbers:
 
 ```json
 "options": [
-  { "id": "texture", "title": "Текстура", "type": "choice", "default": "stone",
+  { "id": "texture", "title": "Texture", "type": "choice", "default": "stone",
     "choices": [
-      { "id": "stone", "title": "Камень" },
-      { "id": "oak", "title": "Доски", "patch": { "keys": { "*": { "background": { "pattern": "planks", "colors": ["#A2834F", "#B8945F"] } } } } }
+      { "id": "stone", "title": "Stone" },
+      { "id": "oak", "title": "Planks", "patch": { "keys": { "*": { "background": { "pattern": "planks", "colors": ["#A2834F", "#B8945F"] } } } } }
     ] },
-  { "id": "dots", "title": "Буквы из точек", "type": "toggle", "default": true,
+  { "id": "dots", "title": "Dot letters", "type": "toggle", "default": true,
     "off": { "keys": { "*": { "labelEffect": "none" } } } },
-  { "id": "frost", "title": "Матовость", "type": "slider", "knob": "glass.frost", "min": 0, "max": 1, "default": 0.4 }
+  { "id": "frost", "title": "Frostiness", "type": "slider", "knob": "glass.frost", "min": 0, "max": 1, "default": 0.4 }
 ]
 ```
 
-Ползунки (`knob`): `radiusScale`, `shadowScale`, `glowScale`, `borderScale`, `keyAlpha`, `windowBlur`,
+Sliders (`knob`): `radiusScale`, `shadowScale`, `glowScale`, `borderScale`, `keyAlpha`, `windowBlur`,
 `glass.frost`, `glass.grain`, `glass.refraction`, `glass.highlight`, `glass.rim`, `glass.dispersion`, `glass.blur`.
-Кроме своих настроек, у любой темы есть общие: скругление, тени, прозрачность, стекло, анимация нажатия, шрифт и
-«Красить в мой акцентный цвет». Если в настройках выбран свой акцент, цвета темы близкие к её акценту (`colors.accent`)
-перекрашиваются в него.
+Besides its own settings, every theme has common ones: rounding, shadows, transparency, glass, the press animation, the font and
+"Tint with my accent color". If the user chose their own accent in the settings, the theme colors that are close to its accent (`colors.accent`)
+are recolored to it.
 
-## settings: любые настройки
+## settings: any settings
 
-Применяются кнопкой «Применить оформление». Ключи — как в резервной копии настроек:
+They are applied by the "Apply look" button. The keys are the same as in the settings backup:
 
 ```json
 "settings": { "key_height_dp": 58, "show_number_row": true, "theme_mode": "DARK", "color_accent": "#FF7A3D", "glide_typing": true }
 ```
 
-Числа с плавающей точкой: `key_height_dp`, `corner_radius_dp`, `key_spacing_dp`, `row_spacing_dp`, `bottom_offset_dp`,
+Floating-point numbers: `key_height_dp`, `corner_radius_dp`, `key_spacing_dp`, `row_spacing_dp`, `bottom_offset_dp`,
 `side_padding_dp`, `key_label_scale`, `key_opacity`, `press_animation`, `long_press_ms`, `vibration_ms`,
 `vibration_amplitude`, `bg_dim`, `bg_blur_dp`, `one_handed_width`, `wave_amplitude_percent`, `sound_volume`.
-Целые и цвета (`"#hex"`): `color_background`, `color_key`, `color_key_text`, `color_func`, `color_func_text`,
+Integers and colors (`"#hex"`): `color_background`, `color_key`, `color_key_text`, `color_func`, `color_func_text`,
 `color_accent`, `color_accent_text`, `seed_color`, `wave_count`, `font_weight`, `clipboard_size`.
-Да/нет: `show_number_row`, `show_key_borders`, `key_preview`, `show_hints`, `show_suggestions`, `show_mic_button`,
+Yes/no: `show_number_row`, `show_key_borders`, `key_preview`, `show_hints`, `show_suggestions`, `show_mic_button`,
 `show_emoji_key`, `show_globe_key`, `panel_animations`, `auto_capitalize`, `auto_correct_enabled`,
 `double_space_period`, `haptics_enabled`, `vibrate_on_release`, `strong_special_keys`, `sound_enabled`,
 `backspace_swipe`, `clipboard_history`, `instant_input`, `glide_typing`, `glide_trail`, `swipe_up_hint`,
 `space_long_press`, `auto_pair`, `incognito`.
-Строки: `theme_mode`, `accent_shape_preset`, `haptic_mode`, `font_style`, `color_source`, `one_handed`, `space_swipe`.
+Strings: `theme_mode`, `accent_shape_preset`, `haptic_mode`, `font_style`, `color_source`, `one_handed`, `space_swipe`.
 
-## variants: что появляется при удержании
+## variants: what appears on long press
 
 ```json
-"variants": { "е": ["ё", "е", "є"], ".": ["…", "!", "?"] }
+"variants": { "e": ["é", "è", "ê", "ë"], ".": ["…", "!", "?"] }
 ```
 
-## layouts: своя раскладка
+## layouts: your own layout
 
-Ключи: код любого языка (`ru`, `en`, `de`, `uk`…), `symbols`, `symbols2`. Если в рядах нет `{space}`, плагин заменяет
-только верхние ряды, а нижний ряд (?123, 🌐, «,», пробел, «.», ввод) остаётся стандартным. С `{space}` заменяется вся
-клавиатура.
+Keys: the code of any language (`ru`, `en`, `de`, `uk`…), `symbols`, `symbols2`. If the rows have no `{space}`, the plugin replaces
+only the top rows, and the bottom row (?123, 🌐, ",", space, ".", enter) stays standard. With `{space}` the whole
+keyboard is replaced.
 
 ```json
 "layouts": {
@@ -843,8 +852,19 @@ Shift и ⌫ добавляются в последний ряд сами. Не�
 }
 ```
 
-Служебные клавиши: `{shift}`, `{backspace}`, `{space}`, `{enter}`, `{symbols}` (?123), `{abc}`, `{page}` (=\<),
-`{globe}`, `{emoji}`, `{gap}`. Ширина — через двоеточие: `{shift:1.5}`, `{gap:0.5}`.
-Своя клавиша — объект: `{ "label": "→", "output": "->", "weight": 1.2, "variants": ["⇒", "⟶"] }`.
-Клавиша мода — `{ "label": "λ", "action": "имя" }`: вызывает команду, зарегистрированную `kb.addCommand("имя", fn)`.
-Высота ряда — объект `{ "rowHeight": 0.8 }` в начале ряда.
+Function keys: `{shift}`, `{backspace}`, `{space}`, `{enter}`, `{symbols}` (?123), `{abc}`, `{page}` (=\<),
+`{globe}`, `{emoji}`, `{gap}`. The width goes after a colon: `{shift:1.5}`, `{gap:0.5}`.
+A key of your own is an object: `{ "label": "→", "output": "->", "weight": 1.2, "variants": ["⇒", "⟶"] }`.
+A mod key is `{ "label": "λ", "action": "name" }`: it calls the command registered with `kb.addCommand("name", fn)`.
+The row height is an object `{ "rowHeight": 0.8 }` at the start of the row.
+
+## Performance notes for mod authors
+
+- A GL layer (`type: "gl"`) whose shader does not read `iTime`, `iFrame`, `iTouch`, `iTilt` or `iAudio` is drawn once and then only
+  when you send a new item, change a uniform with `kb.glUniforms` or the keyboard is resized. Static shaders cost almost nothing.
+- Uniform arrays that did not change between frames are not uploaded to the GPU again.
+- GL meshes may use more than 65,536 vertices: indices above 65535 are drawn as 32-bit indices (always on OpenGL ES 3, with the
+  `OES_element_index_uint` extension on ES 2). The host keeps up to 32 meshes by key, so `{ key }` resends are needed less often.
+- Text in `kb.overlay` is measured through a 256-entry layout cache, so a lot of repeated text is cheap.
+- The **Script log** card shows a `gl:` line with the number of frames drawn, the number of skipped idle frames, and the average and
+  maximum CPU time per frame.

@@ -296,10 +296,10 @@ private fun EnableStep() {
         "Android спрашивает об этом один раз. Набранный текст никуда не отправляется, кроме функций, которые вы включите сами (например, исправления ИИ)."
     )
     SettingsSection(null) {
-        OnbCheckItem(1, "Включить в системе", "Откроются настройки Android: включите Expressive Keyboard", enabled) {
+        OnbCheckItem(1, "Включить в системе", "Откроются настройки Android: включите Expressive Keyboard Pro", enabled) {
             runCatching { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         }
-        OnbCheckItem(2, "Выбрать по умолчанию", "Выберите Expressive Keyboard в списке", selected, active = enabled) {
+        OnbCheckItem(2, "Выбрать по умолчанию", "Выберите Expressive Keyboard Pro в списке", selected, active = enabled) {
             (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
         }
     }

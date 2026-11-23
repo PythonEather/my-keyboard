@@ -179,6 +179,35 @@ internal fun PluginsPage() {
         }
     }
 
+    // Export: save a plugin (or only its script) to a file, so a deleted original can be restored with "Import from file".
+    var exporting by remember { mutableStateOf<KeyboardPlugin?>(null) }
+    fun writeExport(uri: Uri?, asScript: Boolean) {
+        val p = exporting
+        exporting = null
+        if (uri == null || p == null) return
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val text = (if (asScript) PluginRepository.exportScript(context, p) else PluginRepository.exportSource(context, p)?.second)
+                        ?: error("nothing to export")
+                    context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray(Charsets.UTF_8)) } ?: error("cannot open file")
+                }.isSuccess
+            }
+            Toast.makeText(
+                context,
+                if (ok) tr("Plugin exported: import it from the file to restore it") else tr("Export failed"),
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+    val exportJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? -> writeExport(uri, false) }
+    val exportScriptLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/javascript")) { uri: Uri? -> writeExport(uri, true) }
+    fun fileStem(p: KeyboardPlugin) = p.id.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "plugin" }
+    val startExport: (KeyboardPlugin, Boolean) -> Unit = { p, asScript ->
+        exporting = p
+        if (asScript) exportScriptLauncher.launch(fileStem(p) + ".js") else exportJsonLauncher.launch(fileStem(p) + ".json")
+    }
+
     InfoCard(
         Icons.Rounded.Extension,
         "Как установить: нажмите «Импорт из файла» и выберите плагин (.json, .js или .zip) или скопируйте его текст " +
@@ -221,13 +250,13 @@ internal fun PluginsPage() {
     if (user.isNotEmpty()) {
         SettingsSection("Мои плагины") {
             user.forEach { p ->
-                PluginCard(p, expanded == p.id, onExpand = { expanded = if (expanded == p.id) null else p.id }, onDelete = { confirmDelete = p })
+                PluginCard(p, expanded == p.id, onExpand = { expanded = if (expanded == p.id) null else p.id }, onDelete = { confirmDelete = p }, onExport = startExport)
             }
         }
     }
     SettingsSection("Встроенные") {
         builtIn.forEach { p ->
-            PluginCard(p, expanded == p.id, onExpand = { expanded = if (expanded == p.id) null else p.id }, onDelete = null)
+            PluginCard(p, expanded == p.id, onExpand = { expanded = if (expanded == p.id) null else p.id }, onDelete = null, onExport = startExport)
         }
     }
 
@@ -282,7 +311,7 @@ internal fun PluginsPage() {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun PluginCard(p: KeyboardPlugin, expanded: Boolean, onExpand: () -> Unit, onDelete: (() -> Unit)?) {
+internal fun PluginCard(p: KeyboardPlugin, expanded: Boolean, onExpand: () -> Unit, onDelete: (() -> Unit)?, onExport: ((KeyboardPlugin, Boolean) -> Unit)? = null) {
     val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
     val settings by KeyboardPrefs.observe()
@@ -434,6 +463,20 @@ internal fun PluginCard(p: KeyboardPlugin, expanded: Boolean, onExpand: () -> Un
                                 Icon(Icons.Rounded.FormatColorReset, null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text(tr("Снять оформление"))
+                            }
+                        }
+                        if (onExport != null) {
+                            OutlinedButton(onClick = { onExport(p, false) }) {
+                                Icon(Icons.Rounded.Upload, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(tr("Export plugin"))
+                            }
+                            if (p.script != null) {
+                                OutlinedButton(onClick = { onExport(p, true) }) {
+                                    Icon(Icons.Rounded.Code, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(tr("Export script (.js)"))
+                                }
                             }
                         }
                         if (onDelete != null) {

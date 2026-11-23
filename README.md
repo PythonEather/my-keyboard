@@ -54,7 +54,7 @@ that has both network and text-reading permissions.
 ## Plugins and mods
 
 Plugins are imported in **Settings → Plugins and mods**. The format and JavaScript API are described
-in [PLUGINS.md](PLUGINS.md) (in Russian); examples live in [`app/src/main/assets/plugins`](app/src/main/assets/plugins).
+in [PLUGINS.md](PLUGINS.md) (in English); examples live in [`app/src/main/assets/plugins`](app/src/main/assets/plugins).
 
 ## Building from source
 

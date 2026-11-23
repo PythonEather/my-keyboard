@@ -44,7 +44,7 @@ object GlSupport {
 
     private val errors = ConcurrentHashMap<Int, String>()
 
-    private const val MAX_MESHES = 12
+    private const val MAX_MESHES = 32
 
     /**
      * Общий кэш сеток: "мод/ключ" -> сетка. Раньше сетка жила только в том рендерере, куда её прислали, и { key } без данных
@@ -60,6 +60,36 @@ object GlSupport {
         val k = m.key ?: return
         if (m.reuse) return
         meshes[owner + "/" + k] = m
+        liveVersion++
+    }
+
+    /** Bumped whenever live uniforms or cached meshes change: a renderer with a static shader redraws only when this moves. */
+    @Volatile var liveVersion = 0
+
+    private val statDraws = java.util.concurrent.atomic.AtomicLong()
+    private val statSkips = java.util.concurrent.atomic.AtomicLong()
+    private val statNanos = java.util.concurrent.atomic.AtomicLong()
+    private val statMaxNanos = java.util.concurrent.atomic.AtomicLong()
+
+    fun recordDraw(nanos: Long) {
+        statDraws.incrementAndGet()
+        statNanos.addAndGet(nanos)
+        var m = statMaxNanos.get()
+        while (nanos > m && !statMaxNanos.compareAndSet(m, nanos)) m = statMaxNanos.get()
+    }
+
+    fun recordSkip() {
+        statSkips.incrementAndGet()
+    }
+
+    /** One line for the script diagnostics: GL frames drawn and skipped, average and worst CPU time per frame. */
+    fun statsLine(): String? {
+        val n = statDraws.get()
+        if (n == 0L) return null
+        val avg = statNanos.get() / 1_000_000.0 / n
+        return "gl: frames " + n + "  ·  skipped idle: " + statSkips.get() + "  ·  avg: " +
+            String.format(java.util.Locale.US, "%.2f", avg) + " ms  ·  max: " +
+            String.format(java.util.Locale.US, "%.2f", statMaxNanos.get() / 1_000_000.0) + " ms"
     }
 
     fun cachedMesh(owner: String, key: String): GlMesh? = meshes[owner + "/" + key]
@@ -86,10 +116,12 @@ object GlSupport {
             val f = toFloats(v)
             if (f != null) m[k] = f
         }
+        liveVersion++
     }
 
     fun dropLive(key: String) {
         live.remove(key)
+        liveVersion++
     }
 
     fun liveFor(key: String?): Map<String, FloatArray>? = if (key == null) null else live[key]
@@ -118,11 +150,14 @@ class GlMesh(
     val mode: Int,
     val count: Int,
     val attribs: Map<String, GlAttrib>,
-    val indices: ShortArray?,
+    val indices: IntArray?,
     val key: String?,
     val reuse: Boolean
 ) {
     /** Отпечаток содержимого: одинаковую сетку, присланную заново, рендерер не загружает в видеопамять второй раз. */
+    /** Some index is above 65535: the mesh needs 32-bit indices (core in OpenGL ES 3, an extension in ES 2). */
+    val wide: Boolean by lazy { indices?.any { it > 65535 } == true }
+
     val sig: Long by lazy {
         var h = mode * 31L + count
         for ((k, a) in attribs) {
@@ -135,8 +170,8 @@ class GlMesh(
     }
 
     companion object {
-        private const val MAX_FLOATS = 400_000
-        private const val MAX_INDICES = 200_000
+        private const val MAX_FLOATS = 1_000_000
+        private const val MAX_INDICES = 1_000_000
 
         /** Полноэкранный прямоугольник для обычного фрагментного шейдера. */
         val QUAD = GlMesh(
@@ -171,7 +206,7 @@ class GlMesh(
                 return if (key != null) GlMesh(mode, 0, emptyMap(), null, key, true) else null
             }
             val idx = (o["indices"] as? List<*>)?.let { l ->
-                ShortArray(minOf(l.size, MAX_INDICES)) { i -> ((l[i] as? Number)?.toInt() ?: 0).coerceIn(0, 65535).toShort() }
+                IntArray(minOf(l.size, MAX_INDICES)) { i -> ((l[i] as? Number)?.toInt() ?: 0).coerceAtLeast(0) }
             }
             val first = attrs.values.first()
             val count = idx?.size ?: (first.data.size / first.size)
@@ -180,6 +215,9 @@ class GlMesh(
         }
     }
 }
+
+/** Built-in uniforms whose value changes without any message from the mod. */
+private val DYNAMIC_UNIFORMS = hashSetOf("iTime", "iFrame", "iTouch", "iTilt", "iAudio")
 
 private const val VERT2 = "attribute vec2 aPos;\nvarying vec2 vUv;\nvoid main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }\n"
 private const val VERT3 = "#version 300 es\nin vec2 aPos;\nout vec2 vUv;\nvoid main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }\n"
@@ -215,6 +253,14 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
     private var missingWarned = false
     private var depthWarned = false
 
+    /** Uniform values already on the GPU for the current program: unchanged arrays are not uploaded again. */
+    private val sent = HashMap<String, FloatArray>()
+
+    /** The shader reads time, touch, tilt or audio, so every frame differs. A static shader is redrawn only when something changed. */
+    private var animated = true
+    private var uintOk = false
+    private var wideWarned = false
+
     init {
         isDaemon = true
     }
@@ -230,6 +276,7 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
         val fl = HashMap<String, FloatArray>()
         for ((k, v) in item.uniforms) GlSupport.toFloats(v)?.let { fl[k] = it }
         prepared = GlPrepared(item, fl)
+        LockSupport.unpark(this)
     }
 
     fun shutdown() {
@@ -245,7 +292,7 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
     override fun run() {
         try {
             if (!initEgl()) {
-                prepared?.item?.let { GlSupport.fail(it.frag, "GL: не удалось создать контекст OpenGL ES") }
+                prepared?.item?.let { GlSupport.fail(it.frag, "GL: could not create an OpenGL ES context") }
                 return
             }
             loop()
@@ -294,7 +341,9 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
         val cfg = tryContext(3, EGLExt.EGL_OPENGL_ES3_BIT_KHR) ?: tryContext(2, EGL14.EGL_OPENGL_ES2_BIT) ?: return false
         surface = EGL14.eglCreateWindowSurface(display, cfg, st, intArrayOf(EGL14.EGL_NONE), 0)
         if (surface == EGL14.EGL_NO_SURFACE) return false
-        return EGL14.eglMakeCurrent(display, surface, surface, context)
+        if (!EGL14.eglMakeCurrent(display, surface, surface, context)) return false
+        uintOk = glVersion >= 3 || (GLES20.glGetString(GLES20.GL_EXTENSIONS) ?: "").contains("GL_OES_element_index_uint")
+        return true
     }
 
     private fun releaseEgl() {
@@ -316,21 +365,42 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
     private fun loop() {
         val t0 = SystemClock.elapsedRealtimeNanos()
         var n = 0
+        var lastPrepared: GlPrepared? = null
+        var lastLive = -1
+        var lastW = 0
+        var lastH = 0
+        var wasPaused = true
         while (alive) {
             val p = prepared
             if (paused || p == null || viewW <= 0 || viewH <= 0) {
+                wasPaused = true
                 LockSupport.parkNanos(30_000_000L)
                 continue
             }
+            val live = GlSupport.liveVersion
+            val changed = wasPaused || p !== lastPrepared || live != lastLive || viewW != lastW || viewH != lastH
+            if (!changed && !animated) {
+                // nothing moved and the shader does not animate: the last frame stays on the screen
+                GlSupport.recordSkip()
+                LockSupport.parkNanos(16_000_000L)
+                continue
+            }
+            wasPaused = false
+            lastPrepared = p
+            lastLive = live
+            lastW = viewW
+            lastH = viewH
             val start = SystemClock.elapsedRealtime()
+            val startNs = System.nanoTime()
             val t = ((SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000_000.0 % 3600.0).toFloat()
             if (!draw(p, t, n++)) break
+            GlSupport.recordDraw(System.nanoTime() - startNs)
             val wait = 1000L / p.item.fps - (SystemClock.elapsedRealtime() - start)
             if (wait > 0L) {
                 try {
                     Thread.sleep(wait)
                 } catch (e: InterruptedException) {
-                    // проснулись раньше — рисуем дальше
+                    // woke up early: keep drawing
                 }
             }
         }
@@ -355,13 +425,14 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
         val key = item.frag + "\u0000" + item.vert
         if (key == programKey) return program != 0
         programKey = key
+        sent.clear()
         if (program != 0) {
             GLES20.glDeleteProgram(program)
             program = 0
         }
         val es3 = item.frag.trimStart().startsWith("#version 300 es")
         if (es3 && glVersion < 3) {
-            GlSupport.fail(item.frag, "GL: этому устройству нужен OpenGL ES 3.0 для #version 300 es")
+            GlSupport.fail(item.frag, "GL: this device needs OpenGL ES 3.0 for #version 300 es")
             return false
         }
         // В GLSL ES 1.00 фрагментному шейдеру обязательна точность: добавляем, если мод забыл
@@ -401,7 +472,13 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
             if (loc >= 0) list.add(GlUniform(name, loc, type[0], size[0]))
         }
         uniforms = list
+        animated = list.any { it.name in DYNAMIC_UNIFORMS }
         return true
+    }
+
+    private fun intBuf(a: IntArray) = ByteBuffer.allocateDirect(a.size * 4).order(ByteOrder.nativeOrder()).asIntBuffer().also {
+        it.put(a)
+        it.position(0)
     }
 
     private fun floatBuf(a: FloatArray) = ByteBuffer.allocateDirect(a.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer().also {
@@ -427,7 +504,12 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
         }
         if (m.indices != null) {
             GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, ids[i])
-            GLES20.glBufferData(GLES20.GL_ELEMENT_ARRAY_BUFFER, m.indices.size * 2, shortBuf(m.indices), GLES20.GL_DYNAMIC_DRAW)
+            if (m.wide) {
+                GLES20.glBufferData(GLES20.GL_ELEMENT_ARRAY_BUFFER, m.indices.size * 4, intBuf(m.indices), GLES20.GL_DYNAMIC_DRAW)
+            } else {
+                val sh = ShortArray(m.indices.size) { k -> m.indices[k].toShort() }
+                GLES20.glBufferData(GLES20.GL_ELEMENT_ARRAY_BUFFER, sh.size * 2, shortBuf(sh), GLES20.GL_DYNAMIC_DRAW)
+            }
         }
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
         meshIds = ids
@@ -452,6 +534,14 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
         }
     }
 
+    /** Uploads only when the values differ from what this program already has (the arrays are never changed in place). */
+    private fun setCached(un: GlUniform, f: FloatArray) {
+        val prev = sent[un.name]
+        if (prev != null && (prev === f || prev.contentEquals(f))) return
+        setFloats(un, f)
+        sent[un.name] = f
+    }
+
     private fun setUniforms(p: GlPrepared, w: Int, h: Int, t: Float, frame: Int) {
         val dens = density
         val item = p.item
@@ -460,8 +550,8 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
             when (un.name) {
                 "iTime" -> setFloats(un, floatArrayOf(t))
                 "iFrame" -> setFloats(un, floatArrayOf(frame.toFloat()))
-                "iResolution" -> setFloats(un, floatArrayOf(w.toFloat(), h.toFloat(), 1f))
-                "iDensity" -> setFloats(un, floatArrayOf(dens))
+                "iResolution" -> setCached(un, floatArrayOf(w.toFloat(), h.toFloat(), 1f))
+                "iDensity" -> setCached(un, floatArrayOf(dens))
                 "iTouch" -> {
                     // пиксели буфера, начало — левый верхний угол слоя; следит за пальцем сама клавиатура, подписка мода на pointer не нужна
                     val down = ModFx.pointerCount > 0
@@ -471,7 +561,7 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
                 }
                 "iTilt" -> setFloats(un, floatArrayOf(ModSensors.tiltX, ModSensors.tiltY, ModSensors.tiltZ))
                 "iAudio" -> setFloats(un, floatArrayOf(ModAudio.level))
-                else -> (GlSupport.liveFor(item.liveKey)?.get(un.name) ?: p.floats[un.name])?.let { setFloats(un, it) }
+                else -> (GlSupport.liveFor(item.liveKey)?.get(un.name) ?: p.floats[un.name])?.let { setCached(un, it) }
             }
         }
     }
@@ -500,7 +590,8 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
         GLES20.glDisable(GLES20.GL_BLEND)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or if (useDepth) GLES20.GL_DEPTH_BUFFER_BIT else 0)
 
-        if (ensureProgram(item)) {
+        if (!ensureProgram(item)) animated = false
+        else {
             if (item.depth && !depthOk && !depthWarned) {
                 depthWarned = true
                 GlSupport.fail(item.frag, "GL: this device gave no depth buffer, depth: true is ignored")
@@ -564,7 +655,17 @@ private class GlRenderer(private val st: SurfaceTexture) : Thread("mod-gl") {
         }
         if (m.indices != null) {
             GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, meshIds[i])
-            GLES20.glDrawElements(m.mode, m.count, GLES20.GL_UNSIGNED_SHORT, 0)
+            if (m.wide) {
+                // 32-bit indices: core in OpenGL ES 3, otherwise the OES_element_index_uint extension
+                if (glVersion >= 3 || uintOk) {
+                    GLES20.glDrawElements(m.mode, m.count, GLES20.GL_UNSIGNED_INT, 0)
+                } else if (!wideWarned) {
+                    wideWarned = true
+                    GlSupport.fail(item.frag, "GL: this device cannot draw more than 65536 vertices with indices (no OES_element_index_uint)")
+                }
+            } else {
+                GLES20.glDrawElements(m.mode, m.count, GLES20.GL_UNSIGNED_SHORT, 0)
+            }
         } else {
             GLES20.glDrawArrays(m.mode, 0, m.count)
         }

@@ -26,7 +26,7 @@ internal fun Any?.scriptFunction(): PluginScriptFunction? = when (this) {
     else -> null
 }
 
-internal class ScriptTimeout : Error("скрипт работает слишком долго и остановлен")
+internal class ScriptTimeout : Error("script ran too long and was stopped")
 
 internal class RhinoPluginRuntime : PluginScriptRuntime {
     private lateinit var scope: ScriptableObject

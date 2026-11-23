@@ -93,6 +93,8 @@ Java_com_expressive_keyboard_QuickJsPluginRuntime_nativeCreate(JNIEnv *env, jobj
         return 0;
     }
     JS_SetMemoryLimit(plugin->runtime, 64 * 1024 * 1024);
+    /* A higher first threshold: big mods (maps, games) used to trigger a full cycle collection every few hundred KB while loading */
+    JS_SetGCThreshold(plugin->runtime, 8 * 1024 * 1024);
     JS_SetMaxStackSize(plugin->runtime, 256 * 1024);
     JS_SetInterruptHandler(plugin->runtime, check_deadline, plugin);
     plugin->context = JS_NewContext(plugin->runtime);

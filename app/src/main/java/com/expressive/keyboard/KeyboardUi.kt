@@ -252,6 +252,8 @@ fun KeyboardRoot(
             else systemMinimum + adjustableGap
         }
         CompositionLocalProvider(LocalSkin provides skin, LocalBackdrop provides backdrop) {
+          // landscape full screen: on a portrait display the whole window is drawn on a landscape canvas turned by 90 degrees
+          ScreenTurn(if (fullscreen && !landscape) ScriptHost.screenTurn else 0) {
           ScreenFrame(screenMode, ScriptHost.screenPanel, ScriptHost.screenSize, palette, font, corner, onScreenRects) {
           FloatingFrame(floating, settings, safeEdges, palette, corner, onFloatBounds) { keyHeight ->
             Surface(
@@ -307,6 +309,33 @@ fun KeyboardRoot(
             }
           }
           }
+          }
+        }
+    }
+}
+
+/**
+ * Landscape full screen on a portrait display. The window keeps its portrait size, but the content is laid out on a
+ * landscape canvas (width and height swapped) and turned by [turn] degrees around the window center.
+ * Compose maps touches back through the layer, so the keyboard, panels and mod layers work as usual.
+ * With turn = 0 the content is drawn as it is.
+ */
+@Composable
+internal fun ScreenTurn(turn: Int, content: @Composable () -> Unit) {
+    if (turn == 0) {
+        content()
+        return
+    }
+    val density = LocalDensity.current
+    val conf = LocalConfiguration.current
+    val fallbackW = with(density) { conf.screenWidthDp.dp.roundToPx() }
+    val fallbackH = with(density) { conf.screenHeightDp.dp.roundToPx() }
+    Layout(content = content) { measurables, constraints ->
+        val w = if (constraints.hasBoundedWidth) constraints.maxWidth else fallbackW
+        val h = if (constraints.hasBoundedHeight) constraints.maxHeight else fallbackH
+        val placeables = measurables.map { it.measure(Constraints.fixed(h, w)) }
+        layout(w, h) {
+            placeables.forEach { it.placeWithLayer((w - h) / 2, (h - w) / 2) { rotationZ = turn.toFloat() } }
         }
     }
 }

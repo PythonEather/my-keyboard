@@ -1,5 +1,11 @@
 package com.expressive.keyboard
 
+import android.content.ClipboardManager
+import android.content.Context
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -25,7 +31,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.roundToInt
@@ -60,7 +68,7 @@ data class PressAnim(
 
     companion object {
         fun fromJson(o: JSONObject) = PressAnim(
-            id = o.optString("id"), title = o.optString("title", "Своя"),
+            id = o.optString("id"), title = o.optString("title", "Custom"),
             scaleX = o.optDouble("sx", 0.94).toFloat().coerceIn(0.5f, 1.5f),
             scaleY = o.optDouble("sy", 0.94).toFloat().coerceIn(0.5f, 1.5f),
             lift = o.optDouble("lift", 0.0).toFloat().coerceIn(-16f, 16f),
@@ -152,6 +160,52 @@ object Anims {
         }
     }
 
+    private const val FILE_FORMAT = "expressive-keyboard-animations"
+
+    /** All custom animations as a shareable JSON file. */
+    fun exportJson(settings: KeyboardSettings): String {
+        val a = JSONArray()
+        custom(settings).forEach { a.put(it.toJson()) }
+        return JSONObject().put("format", FILE_FORMAT).put("version", 1).put("animations", a).toString(2)
+    }
+
+    /**
+     * Imports animations from JSON text: a file made by exportJson, a bare array, or a single animation object.
+     * Presets keep their ids: an imported animation with a preset id gets a new one. Same custom id replaces the old animation.
+     * Returns how many animations were added or updated.
+     */
+    fun importJson(context: Context, settings: KeyboardSettings, raw: String): Result<Int> = runCatching {
+        val text = raw.removePrefix("\uFEFF").trim()
+        val arr: JSONArray = if (text.startsWith("[")) {
+            JSONArray(text)
+        } else {
+            val o = JSONObject(text)
+            when {
+                o.has("animations") -> o.getJSONArray("animations")
+                o.has("sx") || o.has("sy") || o.has("title") -> JSONArray().put(o)
+                else -> throw IllegalArgumentException("No animations found in this file")
+            }
+        }
+        require(arr.length() in 1..100) { "Expected between 1 and 100 animations" }
+        val presetIds = presets.map { it.id }.toSet()
+        val list = custom(settings).toMutableList()
+        val stamp = System.currentTimeMillis()
+        var added = 0
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val a = PressAnim.fromJson(o)
+            val id = if (a.id.isBlank() || a.id in presetIds) "custom.$stamp.$i" else a.id
+            list.removeAll { it.id == id }
+            list += a.copy(id = id, title = a.title.take(24).ifBlank { "My animation" }, custom = true)
+            added++
+        }
+        require(added > 0) { "No animations found in this file" }
+        val out = JSONArray()
+        list.forEach { out.put(it.toJson()) }
+        KeyboardPrefs.edit(context) { putString("custom_anims", out.toString()) }
+        added
+    }
+
     /** a — прогресс нажатия (может «перелетать» за 1 и уходить ниже 0 у упругих анимаций). */
     fun apply(scope: androidx.compose.ui.graphics.GraphicsLayerScope, anim: PressAnim, a: Float, strength: Float) {
         val k = a * strength
@@ -213,8 +267,36 @@ internal fun AnimSample(anim: PressAnim, speed: Float, strength: Float, selected
 @Composable
 internal fun AnimationsPage(settings: KeyboardSettings) {
     val context = LocalContext.current
+    val ioScope = rememberCoroutineScope()
     var editing by remember { mutableStateOf<PressAnim?>(null) }
     val speed = settings.animSpeed
+    fun reportImport(r: Result<Int>) {
+        r.onSuccess { n -> Toast.makeText(context, tr("{0} animation(s) imported", n), Toast.LENGTH_SHORT).show() }
+            .onFailure { Toast.makeText(context, tr("Import failed: {0}", it.message ?: ""), Toast.LENGTH_LONG).show() }
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) ioScope.launch {
+            val r = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("cannot open file")
+                    require(bytes.size <= 1024 * 1024) { "File is larger than 1 MB" }
+                    Anims.importJson(context, settings, String(bytes, Charsets.UTF_8)).getOrThrow()
+                }
+            }
+            reportImport(r)
+        }
+    }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+        if (uri != null) ioScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val text = Anims.exportJson(settings)
+                    context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray(Charsets.UTF_8)) } ?: error("cannot open file")
+                }.isSuccess
+            }
+            Toast.makeText(context, if (ok) tr("Animations exported") else tr("Export failed"), Toast.LENGTH_SHORT).show()
+        }
+    }
     InfoCard(Icons.Rounded.Animation, "Нажмите на любую клавишу-образец, чтобы увидеть анимацию. «Как в теме» — у каждой темы своя анимация нажатия.")
     SettingsSection("Нажатие клавиши") {
         GroupItem {
@@ -257,6 +339,20 @@ internal fun AnimationsPage(settings: KeyboardSettings) {
         ActionItem(Icons.Rounded.Add, "Создать анимацию", "Сжатие, сдвиг, поворот, прозрачность и упругость — ползунками", onClick = {
             editing = PressAnim("custom.${System.currentTimeMillis()}", tr("Моя анимация"), custom = true)
         })
+        ActionItem(Icons.Rounded.FileOpen, "Import animations", "From a .json file made by Export animations or shared by a friend", onClick = {
+            importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*"))
+        })
+        ActionItem(Icons.Rounded.ContentPaste, "Import from clipboard", "Copy the animation JSON first, then tap", onClick = {
+            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+            if (text.isBlank()) Toast.makeText(context, tr("Буфер обмена пуст"), Toast.LENGTH_SHORT).show()
+            else reportImport(Anims.importJson(context, settings, text))
+        })
+        if (Anims.custom(settings).isNotEmpty()) {
+            ActionItem(Icons.Rounded.Upload, "Export animations", "Save all your custom animations to a .json file", onClick = {
+                exportLauncher.launch("expressive-keyboard-animations.json")
+            })
+        }
     }
     SettingsSection("Подсказка над клавишей") {
         ChoiceItem(
