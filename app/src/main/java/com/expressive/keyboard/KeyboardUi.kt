@@ -694,6 +694,7 @@ internal fun KeyboardScreen(
             }
         }
         GlideTrailLayer(glide, trailColor, settings.glideTrail)
+        DynamicShadowEffect(settings.dynamicShadow)
         ScriptOverlayLayer()
         if (fullscreen) {
             ScreenPanelLayer(if (showKeys) keysPx else 0, palette, font)
@@ -702,6 +703,7 @@ internal fun KeyboardScreen(
         PopupLayer(popup, palette, font, spec.decor(settings), settings.animPopup, settings.animSpeed, settings.popupStyle)
         ScriptFrameTicker()
         ModFxTicker()
+        SecurityIndicatorLayer(settings)
     }
 }
 

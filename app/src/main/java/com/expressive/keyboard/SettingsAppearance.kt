@@ -419,7 +419,7 @@ internal fun ColorsPage(settings: KeyboardSettings) {
                     format = { "${(it * 100).roundToInt()}%" },
                     onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("bg_dim", v) } }
                 )
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S || settings.bgFrostStatic) {
                     SliderItem(
                         icon = Icons.Rounded.BlurOn, title = "Размытие",
                         value = settings.bgBlurDp, range = 0f..24f,
@@ -427,8 +427,20 @@ internal fun ColorsPage(settings: KeyboardSettings) {
                         onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("bg_blur_dp", v) } }
                     )
                 }
+                ToggleItem(
+                    Icons.Rounded.BlurOn, tr("Static frosted glass"),
+                    tr("Blurs the picture once instead of every frame: no battery cost and works on any Android version"),
+                    settings.bgFrostStatic
+                ) { v -> KeyboardPrefs.edit(context) { putBoolean("bg_frost_static", v) } }
             }
         }
+    }
+    SettingsSection(tr("Shadows")) {
+        ToggleItem(
+            Icons.Rounded.Opacity, tr("Dynamic shadow"),
+            tr("Key shadows lean away from the tilt of the phone. Uses the motion sensor only while the keyboard is open; themes without shadows get a soft one"),
+            settings.dynamicShadow
+        ) { v -> KeyboardPrefs.edit(context) { putBoolean("dynamic_shadow", v) } }
     }
 
     picker?.let { t ->

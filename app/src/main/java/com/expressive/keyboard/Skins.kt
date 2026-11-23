@@ -785,15 +785,21 @@ internal fun DrawScope.drawSkinKey(
     val shadowColor = st.shadowColor ?: if (material == SkinMaterial.NEUMORPH) Color.Black.copy(alpha = if (dark) 0.55f else 0.22f)
     else Color.Black.copy(alpha = 0.3f)
     val lightColor = Color.White.copy(alpha = if (dark) 0.11f else 0.75f)
+    // dynamic shadow (setting): the shadow leans away from the tilt; flat keys get a soft one so there is something to move
+    val dyn = DynShadow.enabled
+    val dsx = if (dyn) DynShadow.dx.dp.toPx() else 0f
+    val dsy = if (dyn) DynShadow.dy.dp.toPx() else 0f
+    val shadowDp = if (dyn && shadow <= 0f && (material == SkinMaterial.SOLID || material == SkinMaterial.BEVEL)) 3f else shadow
     fun shadows(cv: android.graphics.Canvas, p: Float) {
-        if (shadow > 0f) {
-            val blur = shadow.dp.toPx() * (1f - 0.5f * p)
-            val off = (st.shadowY ?: shadow * 0.45f).dp.toPx() * (1f - 0.7f * p)
+        if (shadowDp > 0f) {
+            val blur = shadowDp.dp.toPx() * (1f - 0.5f * p)
+            val k = 1f - 0.7f * p
+            val off = (st.shadowY ?: shadowDp * 0.45f).dp.toPx() * k
             if (material == SkinMaterial.NEUMORPH) {
-                shadowOn(cv, c, blur, off, off, shadowColor)
-                shadowOn(cv, c, blur, -off, -off, lightColor)
+                shadowOn(cv, c, blur, off + dsx * k, off + dsy * k, shadowColor)
+                shadowOn(cv, c, blur, -off - dsx * k, -off - dsy * k, lightColor)
             } else {
-                shadowOn(cv, c, blur, 0f, off, shadowColor)
+                shadowOn(cv, c, blur, dsx * k, off + dsy * k, shadowColor)
             }
         }
         st.glow?.let { g ->
@@ -801,12 +807,12 @@ internal fun DrawScope.drawSkinKey(
             if (k > 0.01f) shadowOn(cv, c, glowPx, 0f, 0f, g.copy(alpha = g.alpha * k))
         }
     }
-    if ((part and SKIN_SHADOW) != 0 && (shadow > 0f || st.glow != null)) {
+    if ((part and SKIN_SHADOW) != 0 && (shadowDp > 0f || st.glow != null)) {
         val draw: DrawScope.() -> Unit = {
             if (p < 0.01f) {
                 // в покое — готовая картинка теней; живые тени — только у нажатой клавиши
-                val pad = (shadow.dp.toPx() * 2.5f + glowPx * 2f).coerceAtLeast(1f)
-                restShadows(c, listOf(size.width, size.height, r, st, dark), pad) { shadows(it, 0f) }
+                val pad = (shadowDp.dp.toPx() * 2.5f + glowPx * 2f + if (dyn) 6.dp.toPx() else 0f).coerceAtLeast(1f)
+                restShadows(c, listOf(size.width, size.height, r, st, dark, dsx, dsy, shadowDp), pad) { shadows(it, 0f) }
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 drawIntoCanvas { shadows(it.nativeCanvas, p) }
             }

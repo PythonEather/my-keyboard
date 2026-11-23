@@ -327,7 +327,9 @@ data class KeyboardPlugin(
      * Свой экран мода (манифест: "display"): "fullscreen" — на весь экран, "floating" — плавающая панель,
      * "landscape" / "landscape-right" — на весь экран в альбомной ориентации (на портретном экране картинка повёрнута на 90°).
      */
-    val display: String? = null
+    val display: String? = null,
+    /** Arranges the Settings home screen (manifest "settingsLayout", needs the "settings_layout" permission). */
+    val settingsLayout: SettingsLayoutSpec? = null
 ) {
     val usesNetwork: Boolean get() = "network" in permissions && (actions.any { it.type == PluginActionType.HTTP } || script != null)
     /** Есть что применить кнопкой «Применить оформление». */
@@ -359,7 +361,7 @@ object PluginParser {
     )
     val LAYOUT_IDS = setOf("symbols", "symbols2")
     private val LANG_ID = Regex("^[a-z]{2,3}([-_][a-z0-9]{2,8})?$")
-    val PERMISSIONS = setOf("network", "read_text", "clipboard", "launch", "ai", "sensors", "microphone", "app_info", "screen")
+    val PERMISSIONS = setOf("network", "read_text", "clipboard", "launch", "ai", "sensors", "microphone", "app_info", "screen", "media", "settings_layout")
     val KEYS = setOf(
         "tab", "enter", "left", "right", "up", "down", "home", "end", "select_all", "copy", "cut",
         "paste", "undo", "redo", "delete_word", "escape"
@@ -562,7 +564,8 @@ object PluginParser {
             dictionary = dictionary,
             enabledByDefault = o.optBoolean("enabledByDefault", true),
             skinJson = o.optJSONObject("skin")?.toString(),
-            config = parseConfig(o.optJSONArray("config"))
+            config = parseConfig(o.optJSONArray("config")),
+            settingsLayout = PluginSettingsLayout.parse(o.optJSONObject("settingsLayout"))
         )
     }
 

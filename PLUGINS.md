@@ -37,7 +37,7 @@ If you delete a plugin by accident, import the exported file with **Import from 
 | `name` | yes | Name |
 | `version`, `author`, `description` | no | Shown in the list |
 | `icon` | no | An emoji, a short text, `@icon` or `data:image/png;base64,…` (see "Icons") |
-| `permissions` | no | `network` — internet, `read_text` — read the typed text, `clipboard` — read the clipboard, `launch` — open links, apps and "Share", `ai` — AI requests with the user's key, `sensors` — tilt and rotation of the phone, `microphone` — volume and frequencies from the microphone, `app_info` — which app is being typed in, `screen` — show the mod's own screen (fullscreen, landscape or a floating panel) |
+| `permissions` | no | `network` — internet, `read_text` — read the typed text, `clipboard` — read the clipboard, `launch` — open links, apps and "Share", `ai` — AI requests with the user's key, `sensors` — tilt and rotation of the phone, `microphone` — volume and frequencies from the microphone, `app_info` — which app is being typed in, `screen` — show the mod's own screen (fullscreen, landscape or a floating panel), `media` — what is playing and the player controls, `settings_layout` — arrange the Settings home screen |
 | `config` | no | The mod's own settings — they appear in its card (see "Mod settings") |
 | `script` | no | The mod's JavaScript (a string or an array of strings) |
 | `scriptEngine` | no | `rhino` (default) or `quickjs` |
@@ -93,6 +93,7 @@ A full example is in **Settings → Plugins and mods → Save mod example (.js)*
 | `gyro` | `{ x, y, z }`, rad/s | phone rotation. *sensors* |
 | `audio` | `{ level, bands }`: 0..1 and 8 bands from low to high | after `kb.audio.start()`, 20 times per second. *microphone* |
 | `app` | `{ package, name, color }`, `color` — the main color of the icon | a field in another app was opened. *app_info* |
+| `media` | `{ access, active, playing, title, artist, album, app, position, duration }` (ms) | the track, the player or play/pause changed. *media* |
 
 In password fields and in incognito mode, `pointer`, `tilt`, `gyro`, `audio` and `app` are not delivered. Sensors and the microphone work
 only while the keyboard is on screen; while voice input is open, the microphone belongs to it. The mod never receives the sound itself.
@@ -281,7 +282,7 @@ kb.on("frame", function (dt) {
 ## Effects: particles, shaders, key tilt
 
 The script runs in an interpreter and cannot count thousands of objects per frame, so the keyboard does the heavy work itself:
-the mod only sets parameters. `kb.supports(name)` checks a capability: `shader`, `postEffect`, `labelBlur`, `sensors`, `microphone`.
+the mod only sets parameters. `kb.supports(name)` checks a capability: `shader`, `postEffect`, `labelBlur`, `sensors`, `microphone`, `media`, `mediaInfo`.
 
 ### Particles
 
@@ -936,3 +937,70 @@ kb.overlay([{ type: "batch", shapes: cells.map(function (c) {
   rects, circles and lines through `{ type: "batch" }`.
 - The **Script log** card shows a `gl:` line with the number of frames drawn, the number of skipped idle frames, and the average and
   maximum CPU time per frame.
+
+## Media, Settings layout, shadows and frosted glass
+
+### Permission `media`: now playing and player controls
+
+Add `"media"` to `permissions`. The keyboard then sends the `media` event and gives the mod `kb.media`:
+
+| Call | What it does |
+|---|---|
+| `kb.media.state()` | `{ access, active, playing, title, artist, album, app, position, duration }`. `position` and `duration` are in ms and `position` is current at the moment of the call. |
+| `kb.media.art()` | The cover as a small `data:image/jpeg` URI (up to 128 px), or `""`. Use it in `{ type: "image" }` or to pick colors. |
+| `kb.media.play()` / `pause()` / `toggle()` / `next()` / `previous()` | Player controls; return `true` when sent. |
+| `kb.media.seek(ms)` | Jump to a position (needs Notification access). |
+
+- Title, artist, album, cover and position need **Notification access** for the keyboard. The user turns it on in
+  Settings → Plugins → Media access (on Android 13+ "Allow restricted settings" may have to be allowed first, because the APK is
+  installed outside the Play Store). The keyboard reads only media sessions and never the text of notifications.
+- Without that access `state()` returns `access: false`, `active: false` and only `playing`
+  (whether any music is playing), and the controls fall back to the system media keys.
+- Nothing is delivered in incognito mode and in password fields. `kb.supports("media")` — the mod has the permission,
+  `kb.supports("mediaInfo")` — and Notification access is on.
+- A mod that has both `media` and `network` is a privacy risk (listening history could leave the phone): ask for both only if
+  you really need both.
+
+```js
+kb.on("media", m => {
+  kb.status(m.playing ? "♪ " + m.title + " — " + m.artist : "");
+});
+```
+
+### Permission `settings_layout`: arrange the Settings home screen
+
+A plugin with `"settings_layout"` in `permissions` may add a `settingsLayout` block to the manifest:
+
+```json
+{ "id": "my-order", "name": "My order", "permissions": ["settings_layout"],
+  "settingsLayout": {
+    "pinned": ["themes", "colors"],
+    "order":  ["layout", "keys", "size"],
+    "hidden": ["power"] } }
+```
+
+- `pinned` — pages shown first in their own section named after the plugin. `order` — the order of the remaining pages inside
+  their groups. `hidden` — pages removed from the home screen (the Settings search still finds them).
+- Page names: `whats_new`, `themes`, `theme_editor`, `colors`, `size`, `keys`, `layout`, `long_press`, `animations`,
+  `toolbar`, `languages`, `my_words`, `typing`, `gestures`, `clipboard`, `feedback`, `power`, `plugins`, `backup`, `about`.
+- `plugins`, `backup` and `about` can never be hidden. The home screen shows a row to restore the normal order, and the user can
+  turn the whole feature off in Settings → Plugins → Plugin security. If several plugins have a block, the first enabled one wins.
+- This changes only the order and visibility of pages, not what is inside them.
+
+### Dynamic shadow and static frosted glass
+
+Both are user settings (Settings → Colors and background), and a plugin may switch them in its `settings` block:
+
+| Key | Meaning |
+|---|---|
+| `dynamic_shadow` (`true`/`false`) | Key shadows lean away from the tilt of the phone. Works for keys drawn by a theme or skin; flat keys get a soft shadow. The motion sensor is used only while the keyboard is open. `kb.supports("dynamicShadow")` is `true`. |
+| `bg_frost_static` (`true`/`false`) | The background picture is blurred once (with the existing blur strength, `bg_blur_dp`) instead of live. No battery cost, works on every Android version. |
+
+### Security: red dot and reminder
+
+The keyboard draws a small red dot, above everything a plugin can draw, while a plugin is actually using a sensitive
+permission (`read_text`, `clipboard`, `microphone`, `sensors`, `media`, `app_info`). A warning banner with a red icon appears
+every few minutes (default 4) while such a plugin is enabled; the user can change the interval or switch the reminder off in
+Settings → Plugins → Plugin security. With the reminder off the dot still shows for the microphone and for `network` combined with
+`read_text`, `clipboard` or `media`. Plugins cannot change these settings.
+

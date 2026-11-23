@@ -186,6 +186,8 @@ private class Mod(val plugin: KeyboardPlugin) {
     var keyFx: Map<String, KeyFx> = emptyMap()
     /** Мод слушает микрофон (kb.audio.start). */
     var audio = false
+    /** When the mod last called an API that needs a sensitive permission (for the security indicator). */
+    val used = java.util.concurrent.ConcurrentHashMap<String, Long>()
     fun has(p: String) = p in plugin.permissions
 }
 
@@ -319,7 +321,8 @@ object ScriptHost {
         // координаты пальца на клавиатуре — это и есть набираемый текст
         "pointer" to "read_text",
         "clipboard" to "clipboard",
-        "tilt" to "sensors", "gyro" to "sensors", "audio" to "microphone", "app" to "app_info"
+        "tilt" to "sensors", "gyro" to "sensors", "audio" to "microphone", "app" to "app_info",
+        "media" to "media"
     )
 
     private const val MAX_LOG_LINES = 300
@@ -553,15 +556,41 @@ object ScriptHost {
         return mods.values.any { m -> m.handlers[event]?.isNotEmpty() == true && (perm == null || m.has(perm)) }
     }
 
+    /** Re-evaluates sensors after a setting that needs them changed (dynamic shadow). */
+    fun refreshDevices() = syncDevices()
+
     /** Датчики, микрофон и слежение за пальцем: только пока клавиатура на экране и они кому-то нужны. */
     private fun syncDevices() {
         val ctx = appContext ?: return
         if (!shown) ModFx.clearPointers()
         val usable = shown && !privateMode
         val nativeTilt = ModFx.usesTilt() || ModFx.shaderItems || ModFx.glItems || ModFx.post != null
-        ModSensors.sync(ctx, shown && nativeTilt || usable && listens("tilt"), usable && listens("gyro"))
+        ModSensors.sync(ctx, shown && (nativeTilt || DynShadow.enabled) || usable && listens("tilt"), usable && listens("gyro"))
         ModAudio.sync(ctx, usable && !voiceBusy && mods.values.any { it.audio && it.has("microphone") })
         ModFx.usesPointer(!privateMode && listens("pointer"))
+        MediaBridge.sync(ctx, usable && listens("media"))
+    }
+
+    /** What each enabled plugin with sensitive permissions is using right now: for the red dot and the reminder. */
+    internal fun sensitiveUse(): List<SensitiveUse> {
+        val now = SystemClock.uptimeMillis()
+        val out = ArrayList<SensitiveUse>()
+        for (m in mods.values) {
+            val perms = m.plugin.permissions.filter { it in PluginSafety.SENSITIVE }.toSet()
+            if (perms.isEmpty()) continue
+            val live = HashSet<String>()
+            if (m.audio && "microphone" in perms) live += "microphone"
+            // handlers are registered by the script thread: a clash only means "look again in two seconds"
+            runCatching {
+                for ((ev, hs) in m.handlers) {
+                    val perm = EVENT_PERMS[ev] ?: continue
+                    if (perm in perms && hs.isNotEmpty()) live += perm
+                }
+            }
+            for ((perm, t) in m.used) if (perm in perms && now - t < 30_000L) live += perm
+            out += SensitiveUse(m.plugin.id, m.plugin.name, m.plugin.permissions, live)
+        }
+        return out
     }
 
     private val glWatched = HashSet<String>()
@@ -1148,6 +1177,7 @@ object ScriptHost {
 
     private fun need(m: Mod, perm: String) {
         if (!m.has(perm)) throw IllegalStateException("permission \"$perm\" is required in the permissions field")
+        m.used[perm] = SystemClock.uptimeMillis()
     }
 
     // ------------------------------------------------------------------ API kb.*
@@ -1332,6 +1362,9 @@ object ScriptHost {
                 "particles", "keyEffects", "pointer" -> true
                 "sensors" -> ModSensors.available(ctx)
                 "microphone" -> m.has("microphone") && ModAudio.hasPermission(ctx)
+                "media" -> m.has("media")
+                "mediaInfo" -> m.has("media") && MediaBridge.hasAccess(ctx)
+                "dynamicShadow" -> true
                 else -> false
             }
         }
@@ -1370,6 +1403,16 @@ object ScriptHost {
         def(audio, "stop") { _ -> m.audio = false; syncDevices(); Unit }
         def(audio, "level") { _ -> if (m.audio && m.has("microphone") && !privateMode) ModAudio.level else 0f }
         kb["audio"] = audio
+
+        // --- "media" permission: what is playing and the player controls (title, artist and cover need Notification access)
+        val media = linkedMapOf<String, Any?>()
+        def(media, "state") { _ -> need(m, "media"); if (privateMode) MediaBridge.EMPTY else MediaBridge.state(ctx) }
+        def(media, "art") { _ -> need(m, "media"); if (privateMode) "" else MediaBridge.art(ctx) }
+        for (cmd in listOf("play", "pause", "toggle", "next", "previous")) {
+            def(media, cmd) { _ -> need(m, "media"); !privateMode && MediaBridge.control(ctx, cmd) }
+        }
+        def(media, "seek") { a -> need(m, "media"); !privateMode && MediaBridge.control(ctx, "seek", num(a, 0, 0.0).toLong()) }
+        kb["media"] = media
 
         def(kb, "tilt") { _ ->
             need(m, "sensors")

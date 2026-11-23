@@ -391,7 +391,7 @@ internal fun SettingsPageScaffold(
                     SettingsPage.GESTURES -> TypingPage(settings, SettingsPage.GESTURES)
                     SettingsPage.CLIPBOARD -> TypingPage(settings, SettingsPage.CLIPBOARD)
                     SettingsPage.FEEDBACK -> FeedbackPage(settings)
-                    SettingsPage.PLUGINS -> PluginsPage()
+                    SettingsPage.PLUGINS -> PluginsPage(settings)
                     SettingsPage.BACKUP -> BackupPage()
                     SettingsPage.ABOUT -> AboutPage()
                 }
@@ -468,10 +468,13 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
         return
     }
     var i = 0
+    // a plugin with the settings_layout permission may pin, reorder and hide pages (never Plugins, Backup or About)
+    val arranger = PluginSettingsLayout.owner(settings.pluginSettingsLayout)
+    val layout = arranger?.settingsLayout
     SettingsSection(null) {
         AppLanguageItem(settings)
         val p = SettingsPage.WHATS_NEW
-        CategoryTile(p, i++, selected = p == selected) { onNavigate(p) }
+        if (PluginSettingsLayout.arrange(listOf(p), layout).isNotEmpty()) CategoryTile(p, i++, selected = p == selected) { onNavigate(p) }
     }
     if (!imeEnabled || !imeSelected) HeroCard(
         spec = rememberSpec(settings),
@@ -484,8 +487,21 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
         onSelect = { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker() },
         onMic = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) }
     )
-    SettingsSection("Внешний вид") {
-        for (p in listOf(SettingsPage.SIZE, SettingsPage.KEYS, SettingsPage.THEMES, SettingsPage.COLORS, SettingsPage.ANIMATIONS)) {
+    if (arranger != null) {
+        val pinned = PluginSettingsLayout.pinned(layout)
+        SettingsSection(tr(arranger.name)) {
+            for (p in pinned) CategoryTile(p, i++, selected = p == selected || p == selected?.parent) { onNavigate(p) }
+            ActionItem(
+                Icons.Rounded.Extension, tr("Settings are arranged by a plugin"), tr("Tap to restore the normal order"),
+                onClick = { KeyboardPrefs.edit(context) { putBoolean("plugin_settings_layout", false) } }
+            )
+        }
+    }
+    val looks = PluginSettingsLayout.arrange(
+        listOf(SettingsPage.SIZE, SettingsPage.KEYS, SettingsPage.THEMES, SettingsPage.COLORS, SettingsPage.ANIMATIONS), layout
+    )
+    if (looks.isNotEmpty()) SettingsSection("Внешний вид") {
+        for (p in looks) {
             CategoryTile(p, i++, selected = p == selected || p == selected?.parent) { onNavigate(p) }
         }
     }
@@ -494,13 +510,15 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
         "Инструменты" to listOf(SettingsPage.LAYOUT, SettingsPage.TOOLBAR, SettingsPage.CLIPBOARD, SettingsPage.PLUGINS),
         "Приложение" to listOf(SettingsPage.POWER, SettingsPage.BACKUP, SettingsPage.ABOUT)
     )
-    for ((title, pages) in groups) {
+    for ((title, allPages) in groups) {
+        val pages = PluginSettingsLayout.arrange(allPages, layout)
+        if (pages.isEmpty()) continue
         SettingsSection(title) {
             for (p in pages) {
                 val idx = i++
                 CategoryTile(p, idx, selected = p == selected || p == selected?.parent) { onNavigate(p) }
             }
-            if (SettingsPage.TOOLBAR in pages && imeSelected && !micGranted) {
+            if (SettingsPage.TOOLBAR in allPages && imeSelected && !micGranted) {
                 ActionItem(Icons.Rounded.Mic, "Микрофон для голосового ввода", null,
                     onClick = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) })
             }

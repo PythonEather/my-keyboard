@@ -801,6 +801,7 @@ object ModSensors : SensorEventListener {
                 tiltX += (-e.values[0] / g - tiltX) * k
                 tiltY += (e.values[1] / g - tiltY) * k
                 tiltZ += (e.values[2] / g - tiltZ) * k
+                DynShadow.update(tiltX, tiltY)
                 if (now - lastTilt < 16L) return
                 lastTilt = now
                 ScriptHost.emit("tilt", mapOf("x" to tiltX, "y" to tiltY, "z" to tiltZ))

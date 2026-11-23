@@ -13,6 +13,11 @@
 - `PLUGINS.md` and script log messages in English
 - Faster GL layer and QuickJS (idle frames skipped, uniform caching, 32-bit mesh indices)
 - Mod API additions: retained groups, host-side pan/zoom, GL shape batches
+- Dynamic shadow: key shadows lean away from the tilt of the phone (Settings → Colors and background)
+- Static frosted glass: the background picture is blurred once instead of live, on any Android version
+- Plugin permission `media`: now playing, cover and player controls (needs Notification access for the details)
+- Plugin permission `settings_layout`: a plugin can pin, reorder and hide pages on the Settings home screen
+- Security: red dot while a plugin uses a sensitive permission, and a reminder banner every few minutes (can be switched off)
 
 
 An Android keyboard built with Kotlin, Jetpack Compose and the Material 3 Expressive components

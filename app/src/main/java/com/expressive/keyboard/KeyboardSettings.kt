@@ -207,6 +207,15 @@ data class KeyboardSettings(
     val bgDim: Float = 0.35f,
     val photoFrame: PhotoFrame = PhotoFrame(),
     val bgBlurDp: Float = 0f,
+    /** Blur the background picture once instead of live (static frosted glass). */
+    val bgFrostStatic: Boolean = false,
+    /** Key shadows lean away from the tilt of the phone. */
+    val dynamicShadow: Boolean = false,
+    /** Reminder about plugins that use sensitive permissions (not changeable by plugins). */
+    val securityReminder: Boolean = true,
+    val securityReminderMin: Int = 4,
+    /** Plugins with the settings_layout permission may arrange the Settings home screen. */
+    val pluginSettingsLayout: Boolean = true,
     // --- клавиши ---
     val keyLabelScale: Float = 1f,
     val fontWeight: Int = 700,
@@ -568,6 +577,11 @@ object KeyboardPrefs {
                 y = p.getFloat("photo_y", 0f).coerceIn(-1f, 1f)
             ),
             bgBlurDp = p.getFloat("bg_blur_dp", 0f).coerceIn(0f, 24f),
+            bgFrostStatic = p.getBoolean("bg_frost_static", false),
+            dynamicShadow = p.getBoolean("dynamic_shadow", false),
+            securityReminder = p.getBoolean("security_reminder", true),
+            securityReminderMin = p.getInt("security_reminder_min", 4).coerceIn(1, 1440),
+            pluginSettingsLayout = p.getBoolean("plugin_settings_layout", true),
             keyLabelScale = p.getFloat("key_label_scale", 1f).coerceIn(0.7f, 1.4f),
             fontWeight = p.getInt("font_weight", 700).coerceIn(300, 900),
             showHints = p.getBoolean("show_hints", true),
@@ -714,7 +728,7 @@ object KeyboardPrefs {
             "color_func_text", "color_accent", "color_accent_text", "font_weight", "clipboard_size"
         ).forEach { put(it, 'i') }
         listOf(
-            "show_number_row", "show_key_borders", "key_preview", "key_background", "emoji_return_keyboard", "auto_capitalize", "auto_correct_enabled",
+            "dynamic_shadow", "bg_frost_static", "show_number_row", "show_key_borders", "key_preview", "key_background", "emoji_return_keyboard", "auto_capitalize", "auto_correct_enabled",
             "double_space_period", "haptics_enabled", "vibrate_on_release", "strong_special_keys", "sound_enabled",
             "show_hints", "show_header", "number_pad", "floating_keyboard", "liquid_glass", "glass_merge", "myanmar_visual", "show_suggestions", "inline_calculator", "enter_hold_send", "show_mic_button", "suggestions_full_width", "show_emoji_key", "show_globe_key", "panel_animations",
             "backspace_swipe", "swipe_down_hide", "clipboard_history", "instant_input", "glide_typing", "glide_trail", "swipe_up_hint",

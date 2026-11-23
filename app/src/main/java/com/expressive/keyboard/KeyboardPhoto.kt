@@ -3,6 +3,7 @@ package com.expressive.keyboard
 import android.os.Build
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Size
@@ -31,10 +32,13 @@ data class PhotoFrame(
 @Composable
 internal fun KeyboardPhoto(image: ImageBitmap, settings: KeyboardSettings, modifier: Modifier, alpha: Float = 1f) {
     val blur = settings.bgBlurDp
+    // static frosted glass: blurred once into a small picture, no per-frame blur and no Android 12 requirement
+    val frost = settings.bgFrostStatic && blur > 0.5f
+    val shown = if (frost) remember(image, blur) { frostImage(image, blur) } else image
     Canvas(modifier.then(
-        if (blur > 0f && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(blur.dp) else Modifier
+        if (!frost && blur > 0f && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(blur.dp) else Modifier
     )) {
-        drawKeyboardPhoto(image, size, settings.photoFrame, alpha)
+        drawKeyboardPhoto(shown, size, settings.photoFrame, alpha)
     }
 }
 
