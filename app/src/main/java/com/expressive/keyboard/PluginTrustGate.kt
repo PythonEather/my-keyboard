@@ -165,4 +165,3 @@ private fun PluginTrustWarning(scrollable: Boolean) {
     }
 }
 
-private fun Modifier.height(48.dp): Modifier = this.then(Modifier.height(48.dp))
