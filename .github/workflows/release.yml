@@ -1,0 +1,84 @@
+name: Release APK
+
+# Publishes the GitHub release that the in-app updater looks for.
+# It runs when app/build.gradle.kts changes on main (that is where versionName is raised) and does nothing if the release
+# v<versionName> already exists. It can also be started by hand: Actions -> Release APK -> Run workflow.
+# The release gets the signed release APK as ExpressiveKeyboard-<versionName>.apk and the text of release-notes/<versionName>.md.
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths:
+      - "app/build.gradle.kts"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-apk
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Read the version
+        id: ver
+        run: |
+          VER=$(grep -m1 'versionName' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
+          if ! echo "$VER" | grep -Eq '^[0-9]+(\.[0-9]+)+$'; then
+            echo "versionName '$VER' is not like 11.2.15"; exit 1
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Is it already released?
+        id: exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "v${{ steps.ver.outputs.version }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v${{ steps.ver.outputs.version }} exists, nothing to do"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Android setup
+        if: steps.exists.outputs.found == 'false'
+        uses: ./.github/actions/android-setup
+
+      - name: Use the fixed signing key (APKs update in place)
+        if: steps.exists.outputs.found == 'false'
+        run: |
+          mkdir -p ~/.android
+          cp signing/ci-debug.keystore ~/.android/debug.keystore
+
+      - name: Build the release APK
+        if: steps.exists.outputs.found == 'false'
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Create the release
+        if: steps.exists.outputs.found == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER="${{ steps.ver.outputs.version }}"
+          APK=$(ls app/build/outputs/apk/release/*.apk | grep -vi 'unsigned' | head -n 1)
+          if [ -z "$APK" ]; then echo "No signed release APK was built"; exit 1; fi
+          cp "$APK" "ExpressiveKeyboard-$VER.apk"
+          if [ -f "release-notes/$VER.md" ]; then
+            NOTES="release-notes/$VER.md"
+          else
+            echo "Expressive Keyboard Pro $VER" > /tmp/notes.md
+            NOTES=/tmp/notes.md
+          fi
+          gh release create "v$VER" "ExpressiveKeyboard-$VER.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Expressive Keyboard Pro $VER" \
+            --notes-file "$NOTES" \
+            --latest

@@ -5,7 +5,8 @@
 //   1. loads the script in a Node mock of `kb` with the same prelude the app uses (the prelude is read from the app sources);
 //   2. fires every event the plugin subscribed to (and the buttons, commands and panel renders it registered);
 //   3. compiles every GLSL shader it handed to kb.overlay / kb.background / kb.setLayout-style items ({ type: "gl", frag, vert })
-//      with glslangValidator, with the same changes the app makes (adds `precision`, default vertex shader);
+//      with glslangValidator, with the same changes the app makes (adds `precision`, default vertex shader),
+//      and checks its `textures: { iTex0: "file.png" }`: the files exist in the plugin and every sampler2D has an entry;
 //   4. checks that nothing throws, that the manifest is sane, and warns about slow calls.
 //
 // Where it looks: app/src/main/assets/plugins, app/src/main/assets/examples and ./plugins (your own plugins):
@@ -261,6 +262,47 @@ function validateGl(file, label, item, glslang) {
   }
 }
 
+const TEX_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,31}$/;
+const TEX_RESERVED = new Set(["iPrev", "iTime", "iFrame", "iResolution", "iDensity", "iTouch", "iTilt", "iAudio"]);
+const TEX_FORMATS = /\.(png|jpe?g|webp)$/i;
+
+/** The same rules as GlTextures.parse in the app, plus: the files exist and the shader's sampler2D uniforms have an entry. */
+function validateTextures(file, label, item, files) {
+  const tex = item.textures;
+  const declared = [...String(item.frag || "").matchAll(/uniform\s+(?:(?:lowp|mediump|highp)\s+)?sampler2D\s+(\w+)\s*;/g)].map((m) => m[1]).filter((n) => n !== "iPrev");
+  if (tex === undefined || tex === null) {
+    for (const n of declared) fail(file, `${label}: the shader reads sampler2D ${n} but the layer has no textures: { ${n}: "file.png" }`);
+    return;
+  }
+  if (typeof tex !== "object" || Array.isArray(tex)) { fail(file, `${label}: textures must be an object like { iTex0: "brick.png" }`); return; }
+  const names = Object.keys(tex);
+  if (names.length > 4) warn(file, `${label}: only the first 4 textures are used (${names.length} given)`);
+  for (const name of names.slice(0, 4)) {
+    const v = tex[name];
+    const where = `${label}: texture ${name}`;
+    if (!TEX_NAME.test(name) || TEX_RESERVED.has(name)) { fail(file, `${where}: not a usable name (letters, digits and _, up to 32 characters, and not one of ${[...TEX_RESERVED].join(", ")})`); continue; }
+    const src = typeof v === "string" ? v : v && typeof v === "object" ? v.src : undefined;
+    if (typeof src !== "string" || !src.trim()) { fail(file, `${where}: needs a file name of the .zip or a data: URI (a string, or { src: ... })`); continue; }
+    if (v && typeof v === "object") {
+      if (v.wrap !== undefined && !["clamp", "repeat", "mirror", "mirrored"].includes(String(v.wrap).toLowerCase())) warn(file, `${where}: wrap "${v.wrap}" is not known, clamp is used`);
+      if (v.filter !== undefined && !["linear", "nearest"].includes(String(v.filter).toLowerCase())) warn(file, `${where}: filter "${v.filter}" is not known, linear is used`);
+    }
+    if (src.trim().startsWith("data:")) {
+      if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(src.trim())) fail(file, `${where}: a data: URI must look like data:image/png;base64,...`);
+      continue;
+    }
+    const clean = src.trim().replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
+    if (clean.split("/").includes("..") || clean.length > 200) { fail(file, `${where}: "${src}" is not an allowed path`); continue; }
+    const buf = files && files[clean];
+    if (!buf) { fail(file, `${where}: no file "${clean}" in the plugin (a .zip mod must contain it)`); continue; }
+    if (!TEX_FORMATS.test(clean)) warn(file, `${where}: "${clean}" is not a PNG, JPEG or WebP file, the phone may not be able to read it`);
+    if (buf.length > 16 * 1024 * 1024) fail(file, `${where}: "${clean}" is larger than 16 MB`);
+  }
+  const given = new Set(names);
+  for (const n of declared) if (!given.has(n)) fail(file, `${label}: the shader reads sampler2D ${n} but textures has no ${n}`);
+  for (const n of names.slice(0, 4)) if (!declared.includes(n) && TEX_NAME.test(n) && !TEX_RESERVED.has(n)) warn(file, `${label}: texture ${n} is not read by the shader (no uniform sampler2D ${n})`);
+}
+
 function collectGl(items, out, depth = 0) {
   if (!Array.isArray(items) || depth > 8) return;
   for (const it of items) {
@@ -342,6 +384,8 @@ function checkManifest(file, m) {
   }
 }
 
+const texSeen = new Set();
+
 function runVariant(file, plugin, glslang, cfg, shaderSeen) {
   const m = plugin.manifest;
   const budget = Math.min(2000, Math.max(300, m.callBudgetMs || 300));
@@ -401,6 +445,14 @@ function runVariant(file, plugin, glslang, cfg, shaderSeen) {
   const seen = shaderSeen;
   for (const [kind, i, g] of rec.gl || []) {
     const key = g.frag + "\u0000" + (g.vert || "");
+    // textures are checked for every layer (the same shader may be given different pictures); once per distinct layer
+    if (typeof g.frag === "string") {
+      const tkey = key + "\u0000" + JSON.stringify(g.textures === undefined ? null : g.textures).slice(0, 400);
+      if (!texSeen.has(file + tkey)) {
+        texSeen.add(file + tkey);
+        validateTextures(file, `${kind} gl layer #${i}${g.id ? ` "${g.id}"` : ""}`, g, plugin.files);
+      }
+    }
     if (seen.has(key)) continue;
     seen.add(key);
     validateGl(file, `${kind} gl layer #${i}${g.id ? ` "${g.id}"` : ""}`, g, glslang);

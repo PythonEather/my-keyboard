@@ -38,6 +38,7 @@ Plugins here are not limited to a few buttons, to Android 13+ shaders or to a 30
 |---|---|---|
 | **GLSL layers** (`type: "gl"`) | Your own OpenGL ES 2.0 / 3.0 fragment **and vertex** shaders, meshes, depth buffer, 1–60 fps, own render thread, feedback (the shader reads the previous frame), instancing, automatic quality when the phone is slow or hot. Full-screen effects and real 3D | **8+** (the app minimum) |
 | **AGSL shaders** (`type: "shader"`, `kb.postEffect`) | Shaders that run on the keyboard's own picture: distortion, refraction, hologram | 13+ only |
+| **GL textures** | Pictures from your `.zip` (or `data:` URIs) as `sampler2D` uniforms: textured 3D, sprites, noise and lookup-table colour effects. Up to 4 per layer, repeat / mirror / nearest / mipmaps | 8+ |
 | **GL batches** | Hundreds of rects, circles and lines in one draw call | 8+ |
 | **Retained groups, pan and zoom** | Send a big scene once, move the camera inside the keyboard with no script round trip | 8+ |
 | **Particles and liquid** | Up to 20,000 particles, up to 3,000 liquid ones, driven by the keyboard, not the script | 8+ |
@@ -385,6 +386,7 @@ has its own render thread and OpenGL context, so a slow shader or a busy script 
 | `clear` | The color the buffer is cleared to before each frame (default transparent) |
 | `id` | A name for the layer. With it, `kb.glUniforms(id, { name: value })` changes uniforms without resending the list |
 | `feedback` | `true` turns on render-to-texture: the layer is drawn into two off-screen buffers that swap every frame, and a shader that declares `uniform sampler2D iPrev;` reads the **previous frame** (`texture2D(iPrev, vUv)`, or `texture(iPrev, vUv)` in ES 3). This unlocks motion blur, VHS trails, bloom, mirrors and feedback fractals. Output is premultiplied alpha like any layer. The first frame is transparent. Costs two textures of the buffer size |
+| `textures` | `{ name: source }`: up to 4 pictures the shader reads as `uniform sampler2D name;` (see **Textures in GLSL layers** below). A source is a file name from the plugin's `.zip` or a `data:image/...;base64,` URI; `{ src, wrap, filter, mipmap }` sets how it is sampled |
 | `autoQuality` | The host lowers the resolution when frames are slow (step down 15% after ~10 slow frames, back up slowly when there is room) and lowers fps and resolution when the phone heats up (Android 10+: `THERMAL_STATUS_MODERATE` = max 30 fps and 85% resolution, `SEVERE` = 20 fps and 70%, `CRITICAL` = 12 fps and 50%). Default `true`; `false` draws exactly what you asked for |
 | `minScale` | The lowest resolution factor the governor may use for this layer, 0.1..1 (default 0.4). It multiplies `scale` |
 | `alpha`, `rotation` | Like any element |
@@ -394,6 +396,40 @@ These uniforms are filled in by the keyboard if the shader declares them: `float
 while a finger is down; it follows the finger by itself, no `pointer` handler needed), `vec3 iTilt` (from the motion sensor, only while the
 keyboard is open) and `float iAudio` (0..1, only for a mod with *microphone*, after `kb.audio.start()`). All other uniforms come from `uniforms` or
 `kb.glUniforms`.
+
+**Textures in GLSL layers.** `textures` gives the shader pictures to read, so a mesh can wear a brick wall, a sprite sheet can be cut
+in the shader, and a noise or lookup image can drive an effect. Check with `kb.supports("glTextures")`.
+
+```js
+// brick.png lives in the .zip mod; the shader reads it as iTex0
+kb.overlay([{ type: "gl", vert: V, frag: F, mesh: cube, depth: true,
+  textures: { iTex0: { src: "brick.png", wrap: "repeat", filter: "nearest", mipmap: false } } }]);
+// in F:   uniform sampler2D iTex0;   uniform vec2 iTex0Size;   ...   texture2D(iTex0, uv)    (texture(iTex0, uv) in ES 3)
+```
+
+| Part | What it does |
+|---|---|
+| name (`iTex0`, `uNoise`, ...) | Letters, digits and `_`, up to 32 characters, not starting with a digit, and not a name the keyboard fills in itself (`iPrev`, `iTime`, `iFrame`, `iResolution`, `iDensity`, `iTouch`, `iTilt`, `iAudio`). A bad entry is skipped |
+| source | A file of the plugin's `.zip` (`"brick.png"`, `"img/brick.png"`; a leading `./` is fine, `..` is refused) or a `data:image/...;base64,...` URI. `kb.asset("brick.png")` also works, but a plain file name is cheaper: the file is read once on the render thread instead of being turned into text and sent again with every `kb.overlay` |
+| `wrap` | `"clamp"` (default), `"repeat"` or `"mirror"`: what happens for uv outside 0..1 |
+| `filter` | `"linear"` (default, smooth) or `"nearest"` (hard pixels, for pixel art) |
+| `mipmap` | `true` builds smaller copies for a smooth look when the picture is drawn small (a 3D floor far away) |
+| `uniform vec2 <name>Size;` | Optional. Filled with the size of the uploaded picture in pixels (`iTex0Size` for `iTex0`) |
+
+- Up to **4 textures** per layer; the same picture can be listed twice under other names or settings (it becomes two textures).
+- **Formats:** whatever Android decodes: PNG, JPEG and WebP. SVG is not supported. A file may be up to 16 MB.
+- **Size:** the longest side is limited to 2048 px (or the phone's own limit when that is smaller); bigger pictures are scaled down when they are
+  uploaded. On a phone with only OpenGL ES 2.0, `repeat`, `mirror` and `mipmap` need power-of-two sizes, so the picture is scaled to
+  the next power of two (never above the limit); use `<name>Size` if your maths needs the real size. OpenGL ES 3 phones keep the size.
+- **Orientation and colour:** pixel (0, 0) is the **bottom-left** corner, the same as `vUv`, so `texture2D(iTex0, vUv)` shows the picture upright.
+  Colours are **premultiplied by alpha**, like the layer's own output, so `gl_FragColor = texture2D(iTex0, uv)` is already correct.
+- **Loading:** a picture is decoded and uploaded on the layer's render thread the first time it is drawn (a large picture can take a few
+  tens of milliseconds once, and never blocks typing). It stays while the layer lists it, is replaced when the file changes (the plugin is
+  updated) and is deleted when the layer stops listing it.
+- **Errors** go to the mod's **Script log** and `kb.glError(fragSource)`: a file that is not in the `.zip`, something that is not a picture,
+  or a `sampler2D` in the shader without a `textures` entry. A picture that cannot be loaded is drawn as one magenta pixel, so the mistake is visible.
+- `tools/plugin-test/run.mjs` checks the same things before you install: the files exist in the plugin and every `sampler2D` has an entry.
+- A complete example (a textured cube) is [`gl_textures.js`](app/src/main/assets/examples/gl_textures.js).
 
 ```js
 // A live, full-keyboard plasma under the keys. Works on any Android 8+.
@@ -435,7 +471,7 @@ mesh: {
   longer freeze the first frames. Updating the GPU driver or the system invalidates it by itself.
 - **`kb.glDebug(true)`** shows one line per GL layer over the keyboard: fps, frame time, resolution factor, heat level and the last shader error
   (`kb.glDebug(false)` hides it). The same numbers (plus shader cache hits) are in the mod's diagnostics.
-- `kb.supports("glFeedback")`, `kb.supports("glInstancing")` and `kb.supports("glDebug")` are `true` in versions that have these.
+- `kb.supports("glFeedback")`, `kb.supports("glInstancing")`, `kb.supports("glDebug")`, `kb.supports("glQuality")` and `kb.supports("glTextures")` are `true` in versions that have these.
 
 If the shader fails to compile or link, the reason goes to the mod's **Script log** and `kb.glError(fragSource)` returns it (or `null`).
 Reading the same uniform name in both stages with different precision is a common link error: declare it `highp` in both, or only in one stage.
@@ -1048,6 +1084,7 @@ A `.zip` mod may carry music and other large files. When the archive is imported
 - `kb.playAudio("music/theme.ogg", { loop: true })` plays a big file straight from disk, with no copy in memory, so a long track does not
   depend on the 8 MB limit any more.
 - `kb.asset(path)` can still read a big file, but only up to 16 MB. Use `kb.playAudio` for longer ones.
+- An image in the `.zip` can be a texture of a GLSL layer by its file name alone (`textures: { iTex0: "img/brick.png" }`, up to 16 MB), without `kb.asset`.
 - A single `.js` or `.json` plugin file is still limited to 8 MB. Music needs the `.zip` form.
 - Installing from a link accepts a `.zip` of up to 256 MB, too (see "Installing and updating from a link").
 

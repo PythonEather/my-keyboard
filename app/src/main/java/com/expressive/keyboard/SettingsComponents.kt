@@ -259,10 +259,10 @@ internal fun PillField(
     val cs = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val rest = glassSurface(if (tonal) cs.secondaryContainer else cs.surfaceContainerHighest)
+    val rest = glassSurface(if (tonal) cs.surfaceBright else cs.surfaceContainerHighest)
     val bg by animateColorAsState(if (focused) cs.primaryContainer else rest, label = "pillBg")
     val tint by animateColorAsState(
-        if (focused) cs.onPrimaryContainer else if (tonal) cs.onSecondaryContainer else cs.onSurfaceVariant, label = "pillTint"
+        if (focused) cs.onPrimaryContainer else if (tonal) cs.primary else cs.onSurfaceVariant, label = "pillTint"
     )
     TextField(
         value = value,
@@ -846,12 +846,14 @@ internal fun TextInputDialog(title: String, initial: String, hint: String, onDis
 @Composable
 internal fun InfoCard(icon: ImageVector, text: String) {
     val cs = MaterialTheme.colorScheme
+    // Same surface as every other card of the panel (translucent over a wallpaper, solid without one);
+    // a solid tonal fill made the notes look like a foreign block next to the glass cards.
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.secondaryContainer).padding(16.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(glassSurface(cs.surfaceBright)).padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = cs.onSecondaryContainer)
-        Text(tr(text), style = MaterialTheme.typography.bodyMedium, color = cs.onSecondaryContainer)
+        Icon(icon, null, tint = cs.primary)
+        Text(tr(text), style = MaterialTheme.typography.bodyMedium, color = cs.onSurface)
     }
 }

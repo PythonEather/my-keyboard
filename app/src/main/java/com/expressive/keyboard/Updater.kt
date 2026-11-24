@@ -31,12 +31,66 @@ import java.net.URL
 
 // ============================================================================
 // ОБНОВЛЕНИЯ ПО ВОЗДУХУ (OTA)
-// Новая версия — это релиз на GitHub (kotlalipopus/Expressive-Keyboard) с приложенным APK.
-// Приложение смотрит последний релиз, сравнивает его номер со своим, скачивает APK и открывает
+// Новая версия — это релиз на GitHub (PythonEather/my-keyboard) с приложенным APK. Его делает workflow «Release APK»
+// сам, как только в app/build.gradle.kts поднимается versionName и изменение попадает в main; можно и вручную:
+// Releases → Draft a new release → тег v11.2.16 → прикрепить APK → Publish.
+// Приложение смотрит последние релизы (черновики пропускает, пре-релизы и «не latest» учитывает), берёт самую новую версию
+// с подходящим APK, сравнивает её со своей, скачивает, проверяет, что это тот же пакет и версия новее, и открывает
 // системную установку. Обновление встанет поверх, только если APK подписан тем же ключом.
 // ============================================================================
 
 data class UpdateInfo(val version: String, val notes: String, val apkUrl: String, val size: Long, val page: String)
+
+/** One release of the GitHub API, reduced to what the updater needs (plain data, so the choice below is unit-tested). */
+internal data class ReleaseRow(val tag: String, val draft: Boolean, val notes: String, val page: String, val assets: List<AssetRow>)
+
+internal data class AssetRow(val name: String, val url: String, val size: Long)
+
+/** Выбор релиза и сравнение версий: чистая логика без Android и без состояния, поэтому её проверяют обычные тесты. */
+internal object UpdateLogic {
+    /** «11.1.10» > «11.1.9»: сравниваем числа по порядку. Метка вроде «v11.2.15-beta» читается как 11.2.15. */
+    internal fun newer(remote: String, local: String): Boolean {
+        fun parts(v: String) = versionOf(v).split('.').map { it.toIntOrNull() ?: 0 }
+        val a = parts(remote)
+        val b = parts(local)
+        for (i in 0 until maxOf(a.size, b.size)) {
+            val x = a.getOrElse(i) { 0 }
+            val y = b.getOrElse(i) { 0 }
+            if (x != y) return x > y
+        }
+        return false
+    }
+
+    private val VERSION = Regex("\\d+(?:\\.\\d+)*")
+
+    /** Первое число вида 11.2.15 в метке релиза («v11.2.15», «Expressive 11.2.15»); без чисел — «0». */
+    internal fun versionOf(tag: String): String = VERSION.find(tag)?.value ?: "0"
+
+    /** APK, который можно поставить: не debug и не unsigned; с понятным именем — в приоритете. */
+    internal fun apkOf(assets: List<AssetRow>): AssetRow? {
+        var best: AssetRow? = null
+        for (a in assets) {
+            val n = a.name.lowercase()
+            if (!n.endsWith(".apk") || "debug" in n || "unsigned" in n || a.url.isEmpty()) continue
+            if (best == null || a.name.startsWith("ExpressiveKeyboard-")) best = a
+        }
+        return best
+    }
+
+    /** Самая новая версия среди релизов с подходящим APK (черновики пропускаем); null — такого релиза нет. */
+    internal fun pick(releases: List<ReleaseRow>): UpdateInfo? {
+        var best: UpdateInfo? = null
+        for (r in releases) {
+            if (r.draft || r.tag.isEmpty()) continue
+            val apk = apkOf(r.assets) ?: continue
+            val v = versionOf(r.tag)
+            if (best == null || newer(v, best.version)) {
+                best = UpdateInfo(v, r.notes.trim(), apk.url, apk.size, r.page)
+            }
+        }
+        return best
+    }
+}
 
 object Updater {
     private const val REPO = "PythonEather/my-keyboard"
@@ -55,6 +109,9 @@ object Updater {
     /** Проверяли и обновлений нет — для кнопки «Проверить обновления». */
     var upToDate by mutableStateOf(false)
         private set
+    /** Проверяли, но на GitHub нет ни одного релиза с APK: «последняя версия» тут было бы неправдой. */
+    var noRelease by mutableStateOf(false)
+        private set
     private var autoChecked = false
 
     fun autoEnabled(context: Context): Boolean = KeyboardPrefs.prefs(context).getBoolean(PREF_AUTO, true)
@@ -62,19 +119,6 @@ object Updater {
 
     fun currentVersion(context: Context): String =
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty().substringBefore('-')
-
-    /** «11.1.10» > «11.1.9»: сравниваем числа по порядку. */
-    internal fun newer(remote: String, local: String): Boolean {
-        fun parts(v: String) = v.trim().removePrefix("v").substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
-        val a = parts(remote)
-        val b = parts(local)
-        for (i in 0 until maxOf(a.size, b.size)) {
-            val x = a.getOrElse(i) { 0 }
-            val y = b.getOrElse(i) { 0 }
-            if (x != y) return x > y
-        }
-        return false
-    }
 
     /** Один раз за запуск, если не выключено в настройках. */
     suspend fun autoCheck(context: Context) {
@@ -88,12 +132,16 @@ object Updater {
         checking = true
         error = null
         upToDate = false
+        noRelease = false
         try {
             val info = withContext(Dispatchers.IO) { fetchLatest() }
             val local = currentVersion(context)
-            available = info?.takeIf { local.isNotEmpty() && newer(it.version, local) }
-            upToDate = available == null
+            available = info?.takeIf { local.isNotEmpty() && UpdateLogic.newer(it.version, local) }
+            noRelease = info == null
+            upToDate = info != null && available == null
         } catch (e: Exception) {
+            // не вышло — в следующий раз попробуем снова, а не «раз за запуск»
+            autoChecked = false
             if (!quiet) error = tr("Не удалось проверить обновления: нет связи с GitHub")
         } finally {
             checking = false
@@ -101,10 +149,12 @@ object Updater {
     }
 
     private fun fetchLatest(): UpdateInfo? {
-        val conn = (URL("https://api.github.com/repos/$REPO/releases/latest").openConnection() as HttpURLConnection).apply {
+        // /releases/latest не показывает пре-релизы, а если «latest» отметили не на новом релизе — отдаёт старый: смотрим список сами
+        val conn = (URL("https://api.github.com/repos/$REPO/releases?per_page=20").openConnection() as HttpURLConnection).apply {
             connectTimeout = 8000
             readTimeout = 10000
             setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
             setRequestProperty("User-Agent", "ExpressiveKeyboard")
         }
         val body = try {
@@ -114,25 +164,19 @@ object Updater {
         } finally {
             conn.disconnect()
         }
-        val o = JSONObject(body)
-        val tag = o.optString("tag_name").ifEmpty { return null }
-        val assets = o.optJSONArray("assets") ?: return null
-        var best: JSONObject? = null
-        for (i in 0 until assets.length()) {
-            val a = assets.optJSONObject(i) ?: continue
-            val name = a.optString("name")
-            if (!name.endsWith(".apk", ignoreCase = true) || name.contains("debug", ignoreCase = true)) continue
-            // APK с понятным именем — в приоритете; остальные — если другого нет
-            if (best == null || name.startsWith("ExpressiveKeyboard-")) best = a
+        val arr = org.json.JSONArray(body)
+        val rows = ArrayList<ReleaseRow>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val assets = ArrayList<AssetRow>()
+            val list = o.optJSONArray("assets")
+            if (list != null) for (j in 0 until list.length()) {
+                val a = list.optJSONObject(j) ?: continue
+                assets.add(AssetRow(a.optString("name"), a.optString("browser_download_url"), a.optLong("size")))
+            }
+            rows.add(ReleaseRow(o.optString("tag_name"), o.optBoolean("draft"), o.optString("body"), o.optString("html_url"), assets))
         }
-        val apk = best ?: return null
-        return UpdateInfo(
-            version = tag.removePrefix("v"),
-            notes = o.optString("body").trim(),
-            apkUrl = apk.optString("browser_download_url"),
-            size = apk.optLong("size"),
-            page = o.optString("html_url")
-        )
+        return UpdateLogic.pick(rows)
     }
 
     /** Скачать APK и открыть установку. Без разрешения «Установка неизвестных приложений» — сначала просим его. */
@@ -152,6 +196,13 @@ object Updater {
         progress = 0f
         try {
             val file = withContext(Dispatchers.IO) { download(context, info) }
+            // не тот пакет или версия не новее: система только написала бы «приложение не установлено», без причины
+            val bad = checkApk(context, file)
+            if (bad != null) {
+                file.delete()
+                error = bad
+                return
+            }
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             context.startActivity(
                 Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
@@ -162,6 +213,18 @@ object Updater {
         } finally {
             progress = null
         }
+    }
+
+    /** Текст ошибки, если скачанный файл не подходит для обновления этого приложения, иначе null. */
+    private fun checkApk(context: Context, file: File): String? {
+        val pm = context.packageManager
+        val archive = pm.getPackageArchiveInfo(file.absolutePath, 0) ?: return tr("Скачанный файл — не APK или повреждён")
+        if (archive.packageName != context.packageName) return tr("Скачанный APK — другое приложение, им это не обновить")
+        val installed = runCatching { pm.getPackageInfo(context.packageName, 0) }.getOrNull() ?: return null
+        if (androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(archive) <= androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(installed)) {
+            return tr("В скачанном APK версия не новее установленной")
+        }
+        return null
     }
 
     private fun download(context: Context, info: UpdateInfo): File {
@@ -223,26 +286,26 @@ internal fun UpdateCard() {
     AnimatedVisibility(info != null) {
         val u = info ?: return@AnimatedVisibility
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(cs.tertiaryContainer).padding(20.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(glassSurface(cs.surfaceBright)).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(Icons.Rounded.SystemUpdate, null, tint = cs.onTertiaryContainer)
+                Icon(Icons.Rounded.SystemUpdate, null, tint = cs.primary)
                 Text(
                     tr("Доступна версия {0}", u.version), style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold, color = cs.onTertiaryContainer
+                    fontWeight = FontWeight.ExtraBold, color = cs.onSurface
                 )
             }
             if (u.notes.isNotEmpty()) {
                 Text(
-                    u.notes, style = MaterialTheme.typography.bodyMedium, color = cs.onTertiaryContainer.copy(alpha = 0.85f),
+                    u.notes, style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
                     maxLines = 8, overflow = TextOverflow.Ellipsis
                 )
             }
             val p = Updater.progress
             if (p != null) {
                 LinearWavyProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
-                Text(tr("Скачиваю… {0}%", (p * 100).toInt()), style = MaterialTheme.typography.bodySmall, color = cs.onTertiaryContainer)
+                Text(tr("Скачиваю… {0}%", (p * 100).toInt()), style = MaterialTheme.typography.bodySmall, color = cs.onSurface)
             } else {
                 Button(onClick = { scope.launch { Updater.downloadAndInstall(context, u) } }) {
                     Text(tr("Обновить"))

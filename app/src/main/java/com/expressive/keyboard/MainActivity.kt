@@ -654,6 +654,7 @@ internal fun AboutPage() {
                 Updater.error != null -> Updater.error
                 Updater.available != null -> tr("Доступна версия {0}", Updater.available!!.version)
                 Updater.upToDate -> tr("У вас последняя версия")
+                Updater.noRelease -> tr("На GitHub пока нет релиза с APK")
                 else -> tr("Новые версии приходят с GitHub")
             },
             onClick = { scope.launch { Updater.check(context) } }

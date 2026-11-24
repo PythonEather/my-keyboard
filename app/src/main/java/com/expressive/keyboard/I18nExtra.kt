@@ -3,6 +3,9 @@ package com.expressive.keyboard
 // Дополнительные английские и испанские строки. tr() смотрит сюда раньше основных таблиц.
 
 internal val EN_EXTRA: Map<String, String> = hashMapOf(
+    "Картинки в GL-слоях: textures: { iTex0: \"brick.png\" } даёт шейдеру sampler2D из файла мода (повтор, зеркало, nearest, mipmap)" to "Pictures in GL layers: textures: { iTex0: \"brick.png\" } gives the shader a sampler2D from a file of the mod (repeat, mirror, nearest, mipmap)",
+    "Обновление по воздуху берёт новейший релиз GitHub с подписанным APK, даже если он помечен как предварительный" to "Over-the-air updates take the newest GitHub release that has a signed APK, even if it is marked as a pre-release",
+    "Заметки, строка поиска и карточка обновления теперь совпадают с остальными карточками панели" to "Notes, the search bar and the update card now match the other cards of the panel",
     "«Язык приложения» и «Новое» теперь сразу под поиском настроек" to "App language and What’s new are now directly below Settings search",
     "Уменьшите «Отступ снизу» ниже нуля, чтобы опустить клавиши ближе к системной навигации." to "Set Bottom offset below zero to move the keys closer to system navigation.",
     "После вставки обычного текста клавиатура добавляет пробел, если его ещё нет." to "When you paste plain text, the keyboard adds a trailing space if needed.",
@@ -68,6 +71,9 @@ internal val EN_EXTRA: Map<String, String> = hashMapOf(
 )
 
 internal val ES_EXTRA: Map<String, String> = hashMapOf(
+    "Картинки в GL-слоях: textures: { iTex0: \"brick.png\" } даёт шейдеру sampler2D из файла мода (повтор, зеркало, nearest, mipmap)" to "Imágenes en capas GL: textures: { iTex0: \"brick.png\" } da al shader un sampler2D desde un archivo del mod (repetir, espejo, nearest, mipmap)",
+    "Обновление по воздуху берёт новейший релиз GitHub с подписанным APK, даже если он помечен как предварительный" to "Las actualizaciones por aire toman la versión más reciente de GitHub con un APK firmado, aunque esté marcada como preliminar",
+    "Заметки, строка поиска и карточка обновления теперь совпадают с остальными карточками панели" to "Las notas, la barra de búsqueda y la tarjeta de actualización ahora coinciden con las demás tarjetas del panel",
     "«Язык приложения» и «Новое» теперь сразу под поиском настроек" to "Idioma de la app y Novedades ahora aparecen justo debajo de la búsqueda de ajustes",
     "Уменьшите «Отступ снизу» ниже нуля, чтобы опустить клавиши ближе к системной навигации." to "Ajusta el margen inferior por debajo de cero para acercar las teclas a la navegación del sistema.",
     "После вставки обычного текста клавиатура добавляет пробел, если его ещё нет." to "Al pegar texto sin formato, el teclado añade un espacio al final si hace falta.",

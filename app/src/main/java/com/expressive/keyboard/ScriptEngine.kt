@@ -628,6 +628,22 @@ object ScriptHost {
         }
     }
 
+    private val texWarned = HashSet<String>()
+
+    /** Files named by `textures: {...}` are made known to the GL thread; a missing file is written to the mod's log once. */
+    private fun registerGlTextures(m: Mod, g: OverlayItem.Gl) {
+        if (g.textures.isEmpty()) return
+        val ctx = appContext ?: return
+        for (spec in g.textures) {
+            if (spec.src.startsWith("data:")) continue
+            if (GlTextureFiles.register(ctx, m.plugin, spec.src)) continue
+            if (texWarned.size > 64) texWarned.clear()
+            if (texWarned.add(m.plugin.id + "/" + spec.src)) {
+                log(m.plugin.id, "✕ gl: texture ${spec.name}: no file \"${spec.src}\" in the plugin's .zip")
+            }
+        }
+    }
+
     private fun parseItems(m: Mod, raw: Any?): List<OverlayItem> {
         val list = raw as? List<*> ?: listOfNotNull(raw)
         return list.take(4000).mapNotNull { v ->
@@ -637,6 +653,7 @@ object ScriptHost {
                     // новый kb.overlay задаёт uniform заново: прежние kb.glUniforms больше не действуют
                     g.liveKey?.let { k -> GlSupport.dropLive(k) }
                     watchGl(m.plugin.id, g.frag)
+                    registerGlTextures(m, g)
                     g
                 } else if (parsed is OverlayItem.Group) parsed.copy(pluginId = m.plugin.id) else parsed
             } ?: null.also {
@@ -1399,7 +1416,7 @@ object ScriptHost {
         def(kb, "supports") { a ->
             when (str(a, 0)) {
                 "shader", "postEffect" -> ModShaders.supported
-                "gl", "batch", "groups", "panZoom", "glFeedback", "glInstancing", "glDebug", "glQuality" -> true
+                "gl", "batch", "groups", "panZoom", "glFeedback", "glInstancing", "glDebug", "glQuality", "glTextures" -> true
                 "labelBlur" -> android.os.Build.VERSION.SDK_INT >= 31
                 "particles", "keyEffects", "pointer" -> true
                 "sensors" -> ModSensors.available(ctx)

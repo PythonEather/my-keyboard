@@ -23,6 +23,15 @@ internal fun LandscapeScaleItem(settings: KeyboardSettings) {
 @Composable
 internal fun WhatsNewPage(onNavigate: (SettingsPage) -> Unit) {
     InfoCard(Icons.Rounded.NewReleases, tr("В версии {0}", BuildConfig.VERSION_NAME.substringBefore('-')))
+    SettingsSection("Моды") {
+        InfoCard(Icons.Rounded.Image, "Картинки в GL-слоях: textures: { iTex0: \"brick.png\" } даёт шейдеру sampler2D из файла мода (повтор, зеркало, nearest, mipmap)")
+    }
+    SettingsSection("Обновления") {
+        InfoCard(Icons.Rounded.SystemUpdate, "Обновление по воздуху берёт новейший релиз GitHub с подписанным APK, даже если он помечен как предварительный")
+    }
+    SettingsSection("Внешний вид") {
+        InfoCard(Icons.Rounded.BlurOn, "Заметки, строка поиска и карточка обновления теперь совпадают с остальными карточками панели")
+    }
     SettingsSection("Настройки") {
         InfoCard(Icons.Rounded.Translate, "«Язык приложения» и «Новое» теперь сразу под поиском настроек")
     }

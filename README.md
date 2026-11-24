@@ -10,10 +10,12 @@
 **Plugins and mods**
 - Own screen for mods: fullscreen, landscape (`"display": "landscape"`) or a floating panel
 - Real GLSL layers on every Android version the app installs on (8.0+): fragment and vertex shaders, meshes, instancing, feedback (the shader reads the previous frame), and automatic quality that lowers resolution and fps when the phone is slow or hot
+- **Image textures in GLSL layers** (`textures: { iTex0: "brick.png" }`): pictures from the `.zip` (or `data:` URIs) as `sampler2D` uniforms, for textured 3D, sprites, noise and lookup-table colour effects; repeat, mirror, nearest and mipmaps (see `gl_textures.js`)
 - Mod API additions: retained groups, host-side pan/zoom, GL shape batches
 - Faster GL layer and QuickJS (idle frames skipped, uniform caching, 32-bit mesh indices)
 - Music and other big files in a `.zip` mod: up to 256 MB, kept on disk and played straight from there
 - Install a plugin from a link, and check all linked plugins for newer versions
+- In-app updates (OTA): a new GitHub release with an APK shows up in Settings; the `Release APK` workflow publishes it for you when `versionName` goes up
 - Plugin permission `media`: now playing, cover and player controls (needs Notification access for the details)
 - Plugin permission `settings_layout`: a plugin can pin, reorder and hide pages on the Settings home screen
 - Plugin permission `toolbar_layout`: a plugin can reorder and hide the buttons of the keyboard toolbar
@@ -50,6 +52,23 @@ successful **Build APK** run in the [Actions](https://github.com/PythonEather/my
 
 Requires Android 8.0 or newer. A newer build installs over an older one only if both were signed with the same key;
 an app signed with a different key has to be uninstalled first.
+
+### Updates inside the app (OTA)
+
+Settings → About → **Check for updates** (and once per launch of Settings, if switched on) asks GitHub for the newest release of
+`PythonEather/my-keyboard` that has an APK attached. If its version is higher than the installed one, an update card appears; the app
+downloads the APK, checks that it is this app and newer, and opens the system installer. It installs over the old version only when
+both are signed with the same key (every build of the **Build APK** and **Release APK** workflows uses `signing/ci-debug.keystore`).
+
+To publish a new version:
+
+1. Raise `versionCode` and `versionName` in `app/build.gradle.kts` (for example `11.2.16`) and, if you like, add
+   `release-notes/11.2.16.md` (shown in the update card).
+2. Push to `main`. The **Release APK** workflow builds the release APK and creates the GitHub release `v11.2.16` with
+   `ExpressiveKeyboard-11.2.16.apk` attached. Nothing is created twice: if the release already exists, the workflow does nothing.
+
+Doing it by hand also works: **Releases → Draft a new release**, tag `v11.2.16`, attach an APK whose name ends in `.apk` and does not
+contain `debug` or `unsigned`, and **Publish** (a pre-release is found too; a draft is not).
 
 ## Features
 
@@ -88,7 +107,7 @@ that has both network and text-reading permissions.
 
 Plugins are imported in **Settings → Plugins and mods**: from a file, from the clipboard or from a link.
 The format and JavaScript API are described in [PLUGINS.md](PLUGINS.md) (in English). Built-in plugins live in
-[`app/src/main/assets/plugins`](app/src/main/assets/plugins), examples (GLSL feedback, a 3D neon scene, a first mod) in
+[`app/src/main/assets/plugins`](app/src/main/assets/plugins), examples (GLSL feedback, a 3D neon scene, a textured cube, a first mod) in
 [`app/src/main/assets/examples`](app/src/main/assets/examples).
 
 To test your own plugins before installing them (Node.js 20+ and `glslang`):

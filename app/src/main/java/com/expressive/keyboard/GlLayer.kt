@@ -288,6 +288,10 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
     private var wideWarned = false
     private var instWarned = false
     private var prevWarned = false
+    private val samplersWarned = HashSet<String>()
+
+    /** Images of the layer (textures: { iTex0: ... }), see GlTextureStore.kt. */
+    private val texturePool = GlTexturePool { glVersion }
 
     // host quality: resolution governor + heat, and the debug line
     private val governor = GlGovernor()
@@ -401,6 +405,7 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
     }
 
     private fun releaseEgl() {
+        texturePool.release()
         try {
             if (display != EGL14.EGL_NO_DISPLAY) {
                 EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
@@ -793,6 +798,7 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
         val dens = density
         val item = p.item
         val ratio = if (viewW > 0) w.toFloat() / viewW else 1f
+        texturePool.sync(item)
         for (un in uniforms) {
             when (un.name) {
                 "iTime" -> setFloats(un, floatArrayOf(t))
@@ -818,7 +824,20 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
                         GlSupport.fail(item.frag, "GL: the shader reads iPrev, add feedback: true to the layer")
                     }
                 }
-                else -> (GlSupport.liveFor(item.liveKey)?.get(un.name) ?: p.floats[un.name])?.let { setCached(un, it) }
+                else -> {
+                    val tex = texturePool.entry(un.name)
+                    val sizeOf = if (un.name.endsWith("Size")) texturePool.entry(un.name.removeSuffix("Size")) else null
+                    if (un.type == GlTextures.SAMPLER_2D) {
+                        if (tex != null) texturePool.bind(item, tex, un.loc)
+                        else if (samplersWarned.add(un.name)) {
+                            GlSupport.fail(item.frag, "GL: the shader reads sampler2D ${un.name}, add textures: { ${un.name}: \"file.png\" } to the layer")
+                        }
+                    } else if (sizeOf != null && un.type == GLES20.GL_FLOAT_VEC2) {
+                        setCached(un, texturePool.size(item, sizeOf))
+                    } else {
+                        (GlSupport.liveFor(item.liveKey)?.get(un.name) ?: p.floats[un.name])?.let { setCached(un, it) }
+                    }
+                }
             }
         }
     }

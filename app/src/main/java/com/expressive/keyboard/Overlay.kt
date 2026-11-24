@@ -196,7 +196,9 @@ sealed interface OverlayItem {
         /** The host may lower the resolution when frames are slow and lower fps/resolution when the phone heats up. false = exactly what the mod asked for. */
         val auto: Boolean = true,
         /** The lowest resolution factor the host governor may use. */
-        val minScale: Float = 0.4f
+        val minScale: Float = 0.4f,
+        /** Images the shader reads as `uniform sampler2D <name>` (see GlTextures): files of the plugin's .zip or data: URIs. */
+        val textures: List<GlTexSpec> = emptyList()
     ) : OverlayItem {
         val liveKey: String? get() = id?.let { GlSupport.liveKey(pluginId, it) }
     }
@@ -272,7 +274,8 @@ sealed interface OverlayItem {
                         o["id"]?.toString()?.take(64),
                         feedback = o["feedback"] == true,
                         auto = o["autoQuality"] != false,
-                        minScale = f(o, "minScale", 0.4f).coerceIn(0.1f, 1f)
+                        minScale = f(o, "minScale", 0.4f).coerceIn(0.1f, 1f),
+                        textures = GlTextures.parse(o["textures"])
                     )
                 }
                 "batch" -> GlBatch.parse(o, x, y, f(o, "w", 0f), f(o, "h", 0f), alpha, rot)
