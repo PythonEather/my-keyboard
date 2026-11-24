@@ -224,6 +224,7 @@ private fun ModOptionRow(p: KeyboardPlugin, o: ModOption, value: Any?, rev: Int)
                     valueRange = o.min..maxOf(o.max, o.min + 0.001f)
                 )
             }
+            "image" -> ModImageRow(p, o, value, onValue = { set(it) })
             "preset" -> FilledTonalButton(
                 onClick = {
                     val n = ModConfig.setAll(context, p, o.values)

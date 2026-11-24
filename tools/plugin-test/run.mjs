@@ -282,13 +282,20 @@ function validateTextures(file, label, item, files) {
     const where = `${label}: texture ${name}`;
     if (!TEX_NAME.test(name) || TEX_RESERVED.has(name)) { fail(file, `${where}: not a usable name (letters, digits and _, up to 32 characters, and not one of ${[...TEX_RESERVED].join(", ")})`); continue; }
     const src = typeof v === "string" ? v : v && typeof v === "object" ? v.src : undefined;
-    if (typeof src !== "string" || !src.trim()) { fail(file, `${where}: needs a file name of the .zip or a data: URI (a string, or { src: ... })`); continue; }
+    // an empty string is an empty slot: an `image` setting nobody has filled in yet (the shader gets a 1x1 transparent pixel)
+    if (typeof src === "string" && !src.trim()) continue;
+    if (typeof src !== "string") { fail(file, `${where}: needs a file name of the .zip, a data: URI or the value of an image setting (a string, or { src: ... })`); continue; }
     if (v && typeof v === "object") {
       if (v.wrap !== undefined && !["clamp", "repeat", "mirror", "mirrored"].includes(String(v.wrap).toLowerCase())) warn(file, `${where}: wrap "${v.wrap}" is not known, clamp is used`);
       if (v.filter !== undefined && !["linear", "nearest"].includes(String(v.filter).toLowerCase())) warn(file, `${where}: filter "${v.filter}" is not known, linear is used`);
     }
     if (src.trim().startsWith("data:")) {
       if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(src.trim())) fail(file, `${where}: a data: URI must look like data:image/png;base64,...`);
+      continue;
+    }
+    if (src.trim().startsWith("user:")) {
+      // the value of an `image` setting (kb.config().photo): user:<setting id>:<stamp>
+      if (!/^user:[A-Za-z0-9_.-]{1,40}:[^:]+$/.test(src.trim())) fail(file, `${where}: \"${src}\" is not the value of an image setting (user:<id>:<stamp>); pass kb.config().<id> as it is`);
       continue;
     }
     const clean = src.trim().replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
@@ -363,9 +370,11 @@ function runPlugin(item, glslang) {
     if (!c || !c.id) continue;
     if ("default" in c) { defaults[c.id] = c.default; allOn[c.id] = c.default; }
     if (c.type === "toggle") allOn[c.id] = true;
+    // an image setting is empty by default; the second run has a picture chosen (the app gives the plugin "user:<id>:<stamp>")
+    if (c.type === "image") { defaults[c.id] = ""; allOn[c.id] = `user:${c.id}:1`; }
   }
   const variants = [["defaults", defaults]];
-  if (JSON.stringify(allOn) !== JSON.stringify(defaults)) variants.push(["all toggles on", allOn]);
+  if (JSON.stringify(allOn) !== JSON.stringify(defaults)) variants.push(["all toggles on, pictures chosen", allOn]);
   checkManifest(file, m);
   const shaderSeen = new Set();
   for (const [name, cfg] of variants) {

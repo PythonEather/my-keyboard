@@ -172,7 +172,7 @@ data class PluginAction(
 data class ModOption(
     val id: String,
     val title: String,
-    /** toggle | text | textarea | choice | slider | color — значения; preset | button | info — без значения. */
+    /** toggle | text | textarea | choice | slider | color | image — значения; preset | button | info — без значения. */
     val type: String,
     val default: Any?,
     val description: String = "",
@@ -577,7 +577,7 @@ object PluginParser {
     private fun parseConfig(a: JSONArray?): List<ModOption> {
         if (a == null) return emptyList()
         val out = ArrayList<ModOption>()
-        val types = setOf("toggle", "text", "textarea", "choice", "slider", "color", "preset", "button", "info")
+        val types = setOf("toggle", "text", "textarea", "choice", "slider", "color", "image", "preset", "button", "info")
         var tab = ""
         var section = ""
         var collapsed = false
@@ -1291,6 +1291,7 @@ object PluginRepository {
         val app = context.applicationContext
         File(File(app.filesDir, DIR), "$id.json").delete()
         PluginParser.mediaDir(app, id).deleteRecursively()
+        UserPictures.dir(app, id).deleteRecursively()   // pictures chosen in the plugin's `image` settings
         linkPrefs(app).edit().remove(id).apply()
         reload(app)
     }

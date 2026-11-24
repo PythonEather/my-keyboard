@@ -24,6 +24,7 @@ internal fun LandscapeScaleItem(settings: KeyboardSettings) {
 internal fun WhatsNewPage(onNavigate: (SettingsPage) -> Unit) {
     InfoCard(Icons.Rounded.NewReleases, tr("В версии {0}", BuildConfig.VERSION_NAME.substringBefore('-')))
     SettingsSection("Моды") {
+        InfoCard(Icons.Rounded.AddPhotoAlternate, "Настройка-картинка для модов: { \"type\": \"image\" } даёт кнопку «Выбрать картинку», а kb.config().photo отдаётся шейдеру как текстура")
         InfoCard(Icons.Rounded.Image, "Картинки в GL-слоях: textures: { iTex0: \"brick.png\" } даёт шейдеру sampler2D из файла мода (повтор, зеркало, nearest, mipmap)")
     }
     SettingsSection("Обновления") {

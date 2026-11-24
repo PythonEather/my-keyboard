@@ -25,6 +25,9 @@ data class GlTexSpec(
         else -> 0x2601 // GL_LINEAR
     }
     val magFilter: Int get() = if (nearest) 0x2600 else 0x2601
+
+    /** An empty source: the plugin has no picture for this slot yet (an `image` setting nobody filled in). The shader gets a 1x1 transparent pixel. */
+    val isEmpty: Boolean get() = src.isEmpty()
 }
 
 object GlTextures {
@@ -39,6 +42,22 @@ object GlTextures {
     private const val MAX_PATH = 200
 
     private val NAME = Regex("[A-Za-z_][A-Za-z0-9_]{0,31}")
+    private val OPTION_ID = Regex("[A-Za-z0-9_.-]{1,40}")
+
+    /** Source of a picture the user chose in an `image` setting: `user:<setting id>:<stamp>`. */
+    const val USER_PREFIX = "user:"
+
+    /** The value stored for an `image` setting. The stamp changes with every new picture, so the texture is uploaded again. */
+    fun userValue(optionId: String, stamp: Long): String = "$USER_PREFIX$optionId:$stamp"
+
+    /** The id of the `image` setting a source points at, or null when it is not a `user:` source. */
+    fun userOption(src: String): String? {
+        if (!src.startsWith(USER_PREFIX)) return null
+        val rest = src.substring(USER_PREFIX.length)
+        val i = rest.lastIndexOf(':')
+        if (i <= 0) return null
+        return rest.substring(0, i).takeIf { OPTION_ID.matches(it) }
+    }
 
     /** Uniforms the keyboard fills in itself: a texture may not take these names. */
     private val RESERVED = hashSetOf("iPrev", "iTime", "iFrame", "iResolution", "iDensity", "iTouch", "iTilt", "iAudio")
@@ -64,7 +83,8 @@ object GlTextures {
     }
 
     private fun make(name: String, rawSrc: String, wrap: String?, filter: String?, mip: Boolean): GlTexSpec? {
-        val src = cleanSrc(rawSrc) ?: return null
+        // an empty source is kept: it is an empty slot, not a mistake (see GlTexSpec.isEmpty)
+        val src = if (rawSrc.isBlank()) "" else cleanSrc(rawSrc) ?: return null
         val w = when (wrap?.lowercase()) {
             "repeat" -> GlTexSpec.Wrap.REPEAT
             "mirror", "mirrored" -> GlTexSpec.Wrap.MIRROR

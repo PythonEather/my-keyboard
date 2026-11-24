@@ -44,7 +44,7 @@ class GlTexturesTest {
     fun badEntriesAreSkippedAndOnlyFourAreKept() {
         val raw = linkedMapOf<String, Any?>(
             "1bad" to "a.png", "iTime" to "a.png", "iPrev" to "a.png", "has space" to "a.png",
-            "empty" to "  ", "up" to "../secret.png", "num" to 5,
+            "up" to "../secret.png", "num" to 5,
             "a" to "a.png", "b" to "b.png", "c" to "c.png", "d" to "d.png", "e" to "e.png"
         )
         assertEquals(listOf("a", "b", "c", "d"), GlTextures.parse(raw).map { it.name })
@@ -102,5 +102,33 @@ class GlTexturesTest {
         // never above the limit, even when rounding up would go over it
         assertEquals(1024 to 1024, GlTextures.targetSize(1500, 1500, 1500, true))
         assertEquals(1024 to 1024, GlTextures.targetSize(5000, 2500, 1500, true))
+    }
+
+    @Test
+    fun aBlankSourceIsAnEmptySlotNotAMistake() {
+        val s = GlTextures.parse(linkedMapOf<String, Any?>("a" to "", "b" to "  ", "c" to mapOf("src" to "")))
+        assertEquals(listOf("a", "b", "c"), s.map { it.name })
+        assertTrue(s.all { it.isEmpty })
+        assertFalse(GlTexSpec("t", "x.png").isEmpty)
+    }
+
+    @Test
+    fun userPictureSourcesPointAtOneSetting() {
+        assertEquals("photo", GlTextures.userOption(GlTextures.userValue("photo", 123L)))
+        assertEquals("my.pic-1", GlTextures.userOption("user:my.pic-1:99"))
+        assertNull(GlTextures.userOption("brick.png"))
+        assertNull(GlTextures.userOption("user:nostamp"))
+        assertNull(GlTextures.userOption("user::5"))
+        assertNull(GlTextures.userOption("user:../x:5"))
+        assertNull(GlTextures.userOption("user:" + "a".repeat(41) + ":5"))
+    }
+
+    @Test
+    fun aUserPictureSourceSurvivesParsingAndEachNewPictureIsANewTexture() {
+        val a = GlTextures.parse(mapOf("iTex0" to GlTextures.userValue("photo", 1L)))[0]
+        val b = GlTextures.parse(mapOf("iTex0" to GlTextures.userValue("photo", 2L)))[0]
+        assertEquals("user:photo:1", a.src)
+        assertFalse(a.isEmpty)
+        assertNotEquals(a.key, b.key)
     }
 }

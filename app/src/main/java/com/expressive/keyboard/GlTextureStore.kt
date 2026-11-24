@@ -24,8 +24,9 @@ internal object GlTextureFiles {
         }
     )
 
-    /** false when the plugin has no such file. */
+    /** false when the plugin has no such file (or, for a `user:` source, the user has not chosen a picture). */
     fun register(ctx: Context, plugin: KeyboardPlugin, path: String): Boolean {
+        GlTextures.userOption(path)?.let { return registerUser(ctx.applicationContext, plugin, path, it) }
         val stored = plugin.files[path] ?: return false
         val app = ctx.applicationContext
         var stamp = stored.hashCode() * 31 + stored.length
@@ -33,6 +34,15 @@ internal object GlTextureFiles {
             PluginParser.mediaFile(app, plugin.id, stored)?.let { stamp = stamp * 31 + it.length().toInt() + it.lastModified().toInt() }
         }
         map[plugin.id + "/" + path] = Source(stamp) { read(app, plugin, path, stored) }
+        return true
+    }
+
+    /** A picture the user chose in one of the plugin's own `image` settings; a plugin can never name another plugin's picture. */
+    private fun registerUser(app: Context, plugin: KeyboardPlugin, path: String, option: String): Boolean {
+        if (plugin.config.none { it.id == option && it.type == "image" }) return false
+        val f = UserPictures.file(app, plugin.id, option)
+        if (!f.isFile) return false
+        map[plugin.id + "/" + path] = Source(f.lastModified().toInt() * 31 + f.length().toInt()) { if (f.isFile) f.readBytes() else null }
         return true
     }
 
@@ -64,6 +74,7 @@ internal class GlTexturePool(private val glVersion: () -> Int) {
     private var byName: Map<String, Entry> = emptyMap()
     private var synced: OverlayItem.Gl? = null
     private var fallback = 0
+    private var blank = 0
     private var maxSide = 0
 
     /** Call at the start of every frame: cheap unless the layer item changed. */
@@ -109,10 +120,11 @@ internal class GlTexturePool(private val glVersion: () -> Int) {
         byName = emptyMap()
         synced = null
         fallback = 0
+        blank = 0
     }
 
     private fun stampOf(item: OverlayItem.Gl, spec: GlTexSpec): Int =
-        if (spec.src.startsWith("data:")) 0 else GlTextureFiles.get(item.pluginId, spec.src)?.stamp ?: -1
+        if (spec.isEmpty || spec.src.startsWith("data:")) 0 else GlTextureFiles.get(item.pluginId, spec.src)?.stamp ?: -1
 
     private fun drop(t: Tex) {
         if (!t.shared && t.id != 0) GLES20.glDeleteTextures(1, intArrayOf(t.id), 0)
@@ -120,6 +132,7 @@ internal class GlTexturePool(private val glVersion: () -> Int) {
 
     private fun texture(item: OverlayItem.Gl, spec: GlTexSpec): Tex {
         cache[spec.key]?.let { return it }
+        if (spec.isEmpty) return Tex(blankId(), 1, 1, 0, true).also { cache[spec.key] = it }
         val stamp = stampOf(item, spec)
         val tex = try {
             upload(item, spec, stamp)
@@ -143,18 +156,28 @@ internal class GlTexturePool(private val glVersion: () -> Int) {
     }
 
     private fun fallbackId(): Int {
-        if (fallback == 0) {
-            val id = IntArray(1)
-            GLES20.glGenTextures(1, id, 0)
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, id[0])
-            val px = java.nio.ByteBuffer.allocateDirect(4).put(byteArrayOf(-1, 0, -1, -1))
-            px.position(0)
-            GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 1, 1, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, px)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST)
-            fallback = id[0]
-        }
+        if (fallback == 0) fallback = onePixel(byteArrayOf(-1, 0, -1, -1)) // magenta: a broken image
         return fallback
+    }
+
+    /** A transparent pixel for a slot without a picture: the shader can see it by iTexNSize being 1x1. */
+    private fun blankId(): Int {
+        if (blank == 0) blank = onePixel(byteArrayOf(0, 0, 0, 0))
+        return blank
+    }
+
+    private fun onePixel(rgba: ByteArray): Int {
+        val id = IntArray(1)
+        GLES20.glGenTextures(1, id, 0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, id[0])
+        val px = java.nio.ByteBuffer.allocateDirect(4).put(rgba)
+        px.position(0)
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 1, 1, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, px)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        return id[0]
     }
 
     private fun bytesOf(item: OverlayItem.Gl, spec: GlTexSpec): ByteArray {

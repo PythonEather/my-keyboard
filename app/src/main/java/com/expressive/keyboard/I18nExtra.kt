@@ -3,6 +3,13 @@ package com.expressive.keyboard
 // Дополнительные английские и испанские строки. tr() смотрит сюда раньше основных таблиц.
 
 internal val EN_EXTRA: Map<String, String> = hashMapOf(
+    "Настройка-картинка для модов: { \"type\": \"image\" } даёт кнопку «Выбрать картинку», а kb.config().photo отдаётся шейдеру как текстура" to "Picture setting for mods: { \"type\": \"image\" } adds a “Choose picture” button, and kb.config().photo goes to the shader as a texture",
+    "Выбрать картинку мода" to "Choose picture",
+    "Сменить картинку мода" to "Change picture",
+    "Убрать картинку мода" to "Remove",
+    "Картинка мода не выбрана" to "No picture chosen",
+    "Не удалось прочитать картинку" to "The picture could not be read",
+    "Картинка лежит только на этом телефоне, видит её только этот мод" to "The picture stays on this phone and only this mod can see it",
     "Картинки в GL-слоях: textures: { iTex0: \"brick.png\" } даёт шейдеру sampler2D из файла мода (повтор, зеркало, nearest, mipmap)" to "Pictures in GL layers: textures: { iTex0: \"brick.png\" } gives the shader a sampler2D from a file of the mod (repeat, mirror, nearest, mipmap)",
     "Обновление по воздуху берёт новейший релиз GitHub с подписанным APK, даже если он помечен как предварительный" to "Over-the-air updates take the newest GitHub release that has a signed APK, even if it is marked as a pre-release",
     "Заметки, строка поиска и карточка обновления теперь совпадают с остальными карточками панели" to "Notes, the search bar and the update card now match the other cards of the panel",
@@ -71,6 +78,13 @@ internal val EN_EXTRA: Map<String, String> = hashMapOf(
 )
 
 internal val ES_EXTRA: Map<String, String> = hashMapOf(
+    "Настройка-картинка для модов: { \"type\": \"image\" } даёт кнопку «Выбрать картинку», а kb.config().photo отдаётся шейдеру как текстура" to "Ajuste de imagen para mods: { \"type\": \"image\" } añade un botón «Elegir imagen», y kb.config().photo llega al shader como textura",
+    "Выбрать картинку мода" to "Elegir imagen",
+    "Сменить картинку мода" to "Cambiar imagen",
+    "Убрать картинку мода" to "Quitar",
+    "Картинка мода не выбрана" to "Ninguna imagen elegida",
+    "Не удалось прочитать картинку" to "No se pudo leer la imagen",
+    "Картинка лежит только на этом телефоне, видит её только этот мод" to "La imagen se queda en este teléfono y solo este mod puede verla",
     "Картинки в GL-слоях: textures: { iTex0: \"brick.png\" } даёт шейдеру sampler2D из файла мода (повтор, зеркало, nearest, mipmap)" to "Imágenes en capas GL: textures: { iTex0: \"brick.png\" } da al shader un sampler2D desde un archivo del mod (repetir, espejo, nearest, mipmap)",
     "Обновление по воздуху берёт новейший релиз GitHub с подписанным APK, даже если он помечен как предварительный" to "Las actualizaciones por aire toman la versión más reciente de GitHub con un APK firmado, aunque esté marcada como preliminar",
     "Заметки, строка поиска и карточка обновления теперь совпадают с остальными карточками панели" to "Las notas, la barra de búsqueda y la tarjeta de actualización ahora coinciden con las demás tarjetas del panel",

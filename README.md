@@ -10,6 +10,8 @@
 **Plugins and mods**
 - Own screen for mods: fullscreen, landscape (`"display": "landscape"`) or a floating panel
 - Real GLSL layers on every Android version the app installs on (8.0+): fragment and vertex shaders, meshes, instancing, feedback (the shader reads the previous frame), and automatic quality that lowers resolution and fps when the phone is slow or hot
+- GLSL layers were first committed to this fork on 22 Nov 2026 (commit `544021f`, 21:12 UTC+8)
+- **Picture settings for mods** (`"type": "image"`): the person using a mod picks a picture from the gallery in the mod's settings and the mod gives it to a shader as a texture (`kb.config().photo`); the picture stays in the app's own storage and only that mod can read it
 - **Image textures in GLSL layers** (`textures: { iTex0: "brick.png" }`): pictures from the `.zip` (or `data:` URIs) as `sampler2D` uniforms, for textured 3D, sprites, noise and lookup-table colour effects; repeat, mirror, nearest and mipmaps (see `gl_textures.js`)
 - Mod API additions: retained groups, host-side pan/zoom, GL shape batches
 - Faster GL layer and QuickJS (idle frames skipped, uniform caching, 32-bit mesh indices)

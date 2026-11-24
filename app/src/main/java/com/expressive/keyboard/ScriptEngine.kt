@@ -635,11 +635,12 @@ object ScriptHost {
         if (g.textures.isEmpty()) return
         val ctx = appContext ?: return
         for (spec in g.textures) {
-            if (spec.src.startsWith("data:")) continue
+            if (spec.isEmpty || spec.src.startsWith("data:")) continue
             if (GlTextureFiles.register(ctx, m.plugin, spec.src)) continue
             if (texWarned.size > 64) texWarned.clear()
             if (texWarned.add(m.plugin.id + "/" + spec.src)) {
-                log(m.plugin.id, "✕ gl: texture ${spec.name}: no file \"${spec.src}\" in the plugin's .zip")
+                val what = if (GlTextures.userOption(spec.src) != null) "no picture chosen for that setting (or it is not an image setting of this plugin)" else "no file \"${spec.src}\" in the plugin's .zip"
+                log(m.plugin.id, "✕ gl: texture ${spec.name}: $what")
             }
         }
     }
@@ -1416,7 +1417,7 @@ object ScriptHost {
         def(kb, "supports") { a ->
             when (str(a, 0)) {
                 "shader", "postEffect" -> ModShaders.supported
-                "gl", "batch", "groups", "panZoom", "glFeedback", "glInstancing", "glDebug", "glQuality", "glTextures" -> true
+                "gl", "batch", "groups", "panZoom", "glFeedback", "glInstancing", "glDebug", "glQuality", "glTextures", "imageSettings" -> true
                 "labelBlur" -> android.os.Build.VERSION.SDK_INT >= 31
                 "particles", "keyEffects", "pointer" -> true
                 "sensors" -> ModSensors.available(ctx)

@@ -312,7 +312,7 @@ kb.on("frame", function (dt) {
 ## Effects: particles, shaders, key tilt
 
 The script runs in an interpreter and cannot count thousands of objects per frame, so the keyboard does the heavy work itself:
-the mod only sets parameters. `kb.supports(name)` checks a capability: `gl`, `batch`, `groups`, `panZoom`, `shader`, `postEffect`, `labelBlur`, `particles`, `keyEffects`, `pointer`, `sensors`, `microphone`, `media`, `mediaInfo`.
+the mod only sets parameters. `kb.supports(name)` checks a capability: `gl`, `batch`, `groups`, `panZoom`, `shader`, `postEffect`, `labelBlur`, `particles`, `keyEffects`, `pointer`, `sensors`, `microphone`, `media`, `mediaInfo`, `imageSettings`.
 
 ### Particles
 
@@ -386,7 +386,7 @@ has its own render thread and OpenGL context, so a slow shader or a busy script 
 | `clear` | The color the buffer is cleared to before each frame (default transparent) |
 | `id` | A name for the layer. With it, `kb.glUniforms(id, { name: value })` changes uniforms without resending the list |
 | `feedback` | `true` turns on render-to-texture: the layer is drawn into two off-screen buffers that swap every frame, and a shader that declares `uniform sampler2D iPrev;` reads the **previous frame** (`texture2D(iPrev, vUv)`, or `texture(iPrev, vUv)` in ES 3). This unlocks motion blur, VHS trails, bloom, mirrors and feedback fractals. Output is premultiplied alpha like any layer. The first frame is transparent. Costs two textures of the buffer size |
-| `textures` | `{ name: source }`: up to 4 pictures the shader reads as `uniform sampler2D name;` (see **Textures in GLSL layers** below). A source is a file name from the plugin's `.zip` or a `data:image/...;base64,` URI; `{ src, wrap, filter, mipmap }` sets how it is sampled |
+| `textures` | `{ name: source }`: up to 4 pictures the shader reads as `uniform sampler2D name;` (see **Textures in GLSL layers** below). A source is a file name from the plugin's `.zip`, a `data:image/...;base64,` URI or the value of an `image` setting (`kb.config().photo`); `{ src, wrap, filter, mipmap }` sets how it is sampled |
 | `autoQuality` | The host lowers the resolution when frames are slow (step down 15% after ~10 slow frames, back up slowly when there is room) and lowers fps and resolution when the phone heats up (Android 10+: `THERMAL_STATUS_MODERATE` = max 30 fps and 85% resolution, `SEVERE` = 20 fps and 70%, `CRITICAL` = 12 fps and 50%). Default `true`; `false` draws exactly what you asked for |
 | `minScale` | The lowest resolution factor the governor may use for this layer, 0.1..1 (default 0.4). It multiplies `scale` |
 | `alpha`, `rotation` | Like any element |
@@ -410,7 +410,7 @@ kb.overlay([{ type: "gl", vert: V, frag: F, mesh: cube, depth: true,
 | Part | What it does |
 |---|---|
 | name (`iTex0`, `uNoise`, ...) | Letters, digits and `_`, up to 32 characters, not starting with a digit, and not a name the keyboard fills in itself (`iPrev`, `iTime`, `iFrame`, `iResolution`, `iDensity`, `iTouch`, `iTilt`, `iAudio`). A bad entry is skipped |
-| source | A file of the plugin's `.zip` (`"brick.png"`, `"img/brick.png"`; a leading `./` is fine, `..` is refused) or a `data:image/...;base64,...` URI. `kb.asset("brick.png")` also works, but a plain file name is cheaper: the file is read once on the render thread instead of being turned into text and sent again with every `kb.overlay` |
+| source | A file of the plugin's `.zip` (`"brick.png"`, `"img/brick.png"`; a leading `./` is fine, `..` is refused) or a `data:image/...;base64,...` URI. `kb.asset("brick.png")` also works, but a plain file name is cheaper: the file is read once on the render thread instead of being turned into text and sent again with every `kb.overlay`. An **empty string** is an empty slot (see below) |
 | `wrap` | `"clamp"` (default), `"repeat"` or `"mirror"`: what happens for uv outside 0..1 |
 | `filter` | `"linear"` (default, smooth) or `"nearest"` (hard pixels, for pixel art) |
 | `mipmap` | `true` builds smaller copies for a smooth look when the picture is drawn small (a 3D floor far away) |
@@ -430,6 +430,34 @@ kb.overlay([{ type: "gl", vert: V, frag: F, mesh: cube, depth: true,
   or a `sampler2D` in the shader without a `textures` entry. A picture that cannot be loaded is drawn as one magenta pixel, so the mistake is visible.
 - `tools/plugin-test/run.mjs` checks the same things before you install: the files exist in the plugin and every `sampler2D` has an entry.
 - A complete example (a textured cube) is [`gl_textures.js`](app/src/main/assets/examples/gl_textures.js).
+
+**Pictures chosen by the user.** A setting of type `image` lets the person using your mod pick a picture from the gallery (a photo on the cube,
+their own sprite, a custom noise). Check with `kb.supports("imageSettings")`.
+
+```json
+"config": [
+  { "id": "photo", "title": "Photo on the cube", "type": "image", "description": "Choose a picture from the gallery" }
+]
+```
+
+```js
+// the value of the setting is the texture source: pass it as it is
+kb.overlay([{ type: "gl", vert: V, frag: F, mesh: cube, depth: true,
+  textures: { iTex0: { src: kb.config().photo || "", mipmap: true } } }]);
+kb.on("option", draw);   // the person chose or removed the picture: draw again
+```
+
+- The settings card shows a preview, a **Choose picture** button and a **Remove picture** button.
+- `kb.config().photo` is a short text like `"user:photo:1732450000000"` while a picture is chosen and `""` while there is none. The text changes with every new
+  picture, so the old texture is replaced. It is **not** a file name or a `data:` URI: do not change it, and do not use it with `kb.asset`.
+- **Empty slot:** `""` as a texture source is allowed. The shader gets one transparent pixel (`uniform vec2 iTex0Size;` is `1 x 1`), nothing is
+  logged, so `if (iTex0Size.x < 2.0)` is the way to draw a placeholder until a picture is chosen.
+- **Privacy:** the picture is copied into the app's own storage (longest side at most 2048 px, turned upright by its EXIF tag, PNG when it has
+  transparency, JPEG otherwise). The mod needs no storage permission and can only use pictures chosen in **its own** `image` settings, never
+  another mod's picture and never other files of the phone. The picture is deleted with the mod.
+- An `image` setting can be used only as a GL texture. `kb.http`, `kb.commitImage` and `kb.asset` do not take it.
+- `tools/plugin-test/run.mjs` runs the mod once with every image setting empty and once with a picture chosen.
+- A complete example (a cube with your photo) is [`gl_photo.js`](app/src/main/assets/examples/gl_photo.js).
 
 ```js
 // A live, full-keyboard plasma under the keys. Works on any Android 8+.
@@ -471,7 +499,7 @@ mesh: {
   longer freeze the first frames. Updating the GPU driver or the system invalidates it by itself.
 - **`kb.glDebug(true)`** shows one line per GL layer over the keyboard: fps, frame time, resolution factor, heat level and the last shader error
   (`kb.glDebug(false)` hides it). The same numbers (plus shader cache hits) are in the mod's diagnostics.
-- `kb.supports("glFeedback")`, `kb.supports("glInstancing")`, `kb.supports("glDebug")`, `kb.supports("glQuality")` and `kb.supports("glTextures")` are `true` in versions that have these.
+- `kb.supports("glFeedback")`, `kb.supports("glInstancing")`, `kb.supports("glDebug")`, `kb.supports("glQuality")`, `kb.supports("glTextures")` and `kb.supports("imageSettings")` are `true` in versions that have these.
 
 If the shader fails to compile or link, the reason goes to the mod's **Script log** and `kb.glError(fragSource)` returns it (or `null`).
 Reading the same uniform name in both stages with different precision is a common link error: declare it `highp` in both, or only in one stage.
@@ -606,6 +634,7 @@ a toggle means "on". Setting the same value again produces no event.
 | `toggle`, `slider`, `choice`, `text` | A switch, a slider, a choice, a line of text |
 | `textarea` | A multi-line field, for example for pasting a preset: up to 256 KB, optional `hint` |
 | `color` | A `#RRGGBB` color with a swatch |
+| `image` | A picture the user chooses from the gallery (see **Pictures chosen by the user** below). The value is a short text for `textures`, not a file name |
 | `preset` | A button: sets all the settings from `values` at once. Works even if the mod is not running yet |
 | `button` | A button: the mod receives an `option` event with its `id` |
 | `info` | Plain text (`title`) |
