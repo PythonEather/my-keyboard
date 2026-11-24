@@ -7,18 +7,28 @@
 
 ### What is different from the original
 
-- Renamed to **Expressive Keyboard Pro**
-- Landscape full-screen mode for mods (`"display": "landscape"`)
-- Import and export of custom animations; export of plugins (JSON and script)
-- `PLUGINS.md` and script log messages in English
-- Faster GL layer and QuickJS (idle frames skipped, uniform caching, 32-bit mesh indices)
+**Plugins and mods**
+- Own screen for mods: fullscreen, landscape (`"display": "landscape"`) or a floating panel
+- Real GLSL layers on every Android version the app installs on (8.0+): fragment and vertex shaders, meshes, instancing, feedback (the shader reads the previous frame), and automatic quality that lowers resolution and fps when the phone is slow or hot
 - Mod API additions: retained groups, host-side pan/zoom, GL shape batches
-- Dynamic shadow: key shadows lean away from the tilt of the phone (Settings → Colors and background)
-- Static frosted glass: the background picture is blurred once instead of live, on any Android version
+- Faster GL layer and QuickJS (idle frames skipped, uniform caching, 32-bit mesh indices)
+- Music and other big files in a `.zip` mod: up to 256 MB, kept on disk and played straight from there
+- Install a plugin from a link, and check all linked plugins for newer versions
 - Plugin permission `media`: now playing, cover and player controls (needs Notification access for the details)
 - Plugin permission `settings_layout`: a plugin can pin, reorder and hide pages on the Settings home screen
+- Plugin permission `toolbar_layout`: a plugin can reorder and hide the buttons of the keyboard toolbar
 - Security: red dot while a plugin uses a sensitive permission, and a reminder banner every few minutes (can be switched off)
+- Import and export of custom animations; export of plugins (JSON and script)
+- Your own plugins can live in [`plugins/`](plugins): the GitHub build runs each one in a Node mock of `kb` and compiles its shaders, so a broken plugin fails the build before you install it
 
+**Look**
+- Dynamic shadow: key shadows lean away from the tilt of the phone (Settings → Colors and background)
+- Static frosted glass: the background picture is blurred once instead of live, on any Android version
+
+**General**
+- Renamed to **Expressive Keyboard Pro**
+- `PLUGINS.md` and script log messages in English
+- GitHub builds use one fixed signing key, so a newer build installs over an older one made by the same workflow
 
 An Android keyboard built with Kotlin, Jetpack Compose and the Material 3 Expressive components
 (`androidx.compose.material3` 1.5): `MaterialExpressiveTheme` with the expressive motion scheme,
@@ -34,9 +44,12 @@ Highly customizable and extensible with plugins and JavaScript mods.
 
 ## Download
 
-Get the latest APK from [Releases](https://github.com/PythonEather/my-keyboard/releases/latest).
+Get the latest APK from [Releases](https://github.com/PythonEather/my-keyboard/releases/latest), or from the newest
+successful **Build APK** run in the [Actions](https://github.com/PythonEather/my-keyboard/actions) tab (artifacts
+`ExpressiveKeyboard-release-apk` and `ExpressiveKeyboard-debug-apk`).
 
-Requires Android 8.0 or newer.
+Requires Android 8.0 or newer. A newer build installs over an older one only if both were signed with the same key;
+an app signed with a different key has to be uninstalled first.
 
 ## Features
 
@@ -52,7 +65,7 @@ Requires Android 8.0 or newer.
 - **Layout:** key height and corner radius, spacing, keyboard width, one-handed mode
 - **Feedback:** adjustable vibration and sound
 - **Privacy:** incognito mode; suggestions and dictionary learning are turned off in password fields
-- **Plugins and mods:** custom buttons, shortcuts, layouts, themes and JavaScript scripts that can draw and animate over the keyboard, press keys and change layouts on the fly
+- **Plugins and mods:** custom buttons, shortcuts, layouts, themes and JavaScript scripts that can draw and animate over the keyboard (including GLSL shaders and 3D), play music, press keys, change layouts on the fly and arrange the Settings screen and the toolbar
 
 ## Installation
 
@@ -73,8 +86,18 @@ that has both network and text-reading permissions.
 
 ## Plugins and mods
 
-Plugins are imported in **Settings → Plugins and mods**. The format and JavaScript API are described
-in [PLUGINS.md](PLUGINS.md) (in English); examples live in [`app/src/main/assets/plugins`](app/src/main/assets/plugins).
+Plugins are imported in **Settings → Plugins and mods**: from a file, from the clipboard or from a link.
+The format and JavaScript API are described in [PLUGINS.md](PLUGINS.md) (in English). Built-in plugins live in
+[`app/src/main/assets/plugins`](app/src/main/assets/plugins), examples (GLSL feedback, a 3D neon scene, a first mod) in
+[`app/src/main/assets/examples`](app/src/main/assets/examples).
+
+To test your own plugins before installing them (Node.js 20+ and `glslang`):
+
+```bash
+node tools/plugin-test/run.mjs
+```
+
+Put them in [`plugins/`](plugins) and the same check runs in the GitHub build.
 
 ## Building from source
 
@@ -89,6 +112,9 @@ cd my-keyboard
 
 Install Android NDK (Side by side) version `28.2.13676358` from the Android Studio SDK Manager to build QuickJS.
 The APK will be in `app/build/outputs/apk/debug/`.
+
+No computer? Push to GitHub and the **Build APK** workflow (`.github/workflows/build.yml`) builds the release and
+debug APKs for you; download them from the run's artifacts.
 
 To enable GIF search, put your own Giphy key into `GIPHY_API_KEY` in
 `app/src/main/java/com/expressive/keyboard/Common.kt`. Without a key, a built-in GIF set is used.

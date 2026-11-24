@@ -6,7 +6,7 @@ A plugin is imported in **Settings → Plugins and mods**, from a file or from t
 |---|---|
 | `.json` | A declarative plugin: actions, shortcuts, symbols, themes, skins, settings, layouts, icons, languages. It may also contain a script in the `script` field |
 | `.js` | A **mod**: JavaScript, with the manifest written as JSON in a `/* @plugin { … } */` comment at the top of the file |
-| `.zip` | A mod with files: `plugin.json` + `main.js` + images and data (up to 8 MB) |
+| `.zip` | A mod with files: `plugin.json` + `main.js` + images and data. Small files (images, data) take up to 8 MB together. Audio and any file of 256 KB or more is a **big file**: it is kept on disk, not in memory, and the archive may hold up to 256 MB of them (see "Big files and music") |
 
 A mod script gets the `kb` object. It can react to key presses and words, insert and change text,
 add its own panels, buttons, keys and suggestions, store data, use the network, change icons, language and settings,
@@ -36,7 +36,7 @@ Plugins here are not limited to a few buttons, to Android 13+ shaders or to a 30
 
 | Area | What it gives you | Android version |
 |---|---|---|
-| **GLSL layers** (`type: "gl"`) | Your own OpenGL ES 2.0 / 3.0 fragment **and vertex** shaders, meshes, depth buffer, 1–60 fps, own render thread. Full-screen effects and real 3D | **8+** (the app minimum) |
+| **GLSL layers** (`type: "gl"`) | Your own OpenGL ES 2.0 / 3.0 fragment **and vertex** shaders, meshes, depth buffer, 1–60 fps, own render thread, feedback (the shader reads the previous frame), instancing, automatic quality when the phone is slow or hot. Full-screen effects and real 3D | **8+** (the app minimum) |
 | **AGSL shaders** (`type: "shader"`, `kb.postEffect`) | Shaders that run on the keyboard's own picture: distortion, refraction, hologram | 13+ only |
 | **GL batches** | Hundreds of rects, circles and lines in one draw call | 8+ |
 | **Retained groups, pan and zoom** | Send a big scene once, move the camera inside the keyboard with no script round trip | 8+ |
@@ -44,7 +44,7 @@ Plugins here are not limited to a few buttons, to Android 13+ shaders or to a 30
 | **Own screen** | Fullscreen, landscape (`landscape`, `landscape-right`) or a floating panel for a mod: games, maps, tools | 8+ |
 | **Two script engines** | Rhino (default) or QuickJS (`"scriptEngine": "quickjs"`), same `kb.*` API, may run side by side | 8+ |
 | **Sensors, microphone, app, media** | Tilt, gyro, microphone level and bands, the app being typed in, now playing and player controls (each needs a permission) | 8+ |
-| **Settings, themes, skins** | Plugins can add skins, themes, layouts, icons, languages, dictionaries and arrange the Settings home screen (`settings_layout`) | 8+ |
+| **Settings, themes, skins** | Plugins can add skins, themes, layouts, icons, languages, dictionaries, arrange the Settings home screen (`settings_layout`) and the keyboard toolbar (`toolbar_layout`) | 8+ |
 | **Dynamic shadow, static frosted glass** | Shadows that lean with the phone tilt, a background blurred once | 8+ |
 
 Three things people often get wrong:
@@ -55,7 +55,7 @@ Three things people often get wrong:
   keyboard, so a mod only sets parameters and the budget is almost never the limit.
 - **"It is the same as the official keyboard."** This is an independent fork with its own releases. It started from the original and adds
   landscape full screen for mods, retained groups, host-side pan/zoom, GL batches, a faster GL layer, dynamic shadow, static frosted glass,
-  the `media` and `settings_layout` permissions and the security notice (the README has the full list).
+  the `media`, `settings_layout` and `toolbar_layout` permissions, installing plugins from a link, music of up to 256 MB in a `.zip` and the security notice (the README has the full list).
 
 ## Common fields
 
@@ -483,7 +483,7 @@ Typing speed is counted in a plain script: measure the time between `press` even
 | Function | Description |
 |---|---|
 | `kb.storage.get(key, def)` / `set(key, value)` / `remove(key)` / `keys()` / `clear()` | The mod's storage (JSON, survives a restart) |
-| `kb.asset(path)` | A file from the .zip: an image → a `data:` URI, anything else → text |
+| `kb.asset(path)` | A file from the .zip: an image → a `data:` URI, anything else → text. A big file can be read this way only up to 16 MB; larger ones are for `kb.playAudio` |
 | `kb.http({ url, method, headers, body }, function (err, res) {})` | `https://` only; `res = { status, ok, text, json }`. *network* |
 | `kb.translate(text, to, function (err, result) {})` | Translation with automatic language detection. *network* |
 | `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` | Timers (up to 64 at the same time) |
@@ -514,7 +514,7 @@ kb.fetch("https://api.github.com/zen").then(function (r) { kb.commit(r.text); },
 | Function | Description |
 |---|---|
 | `kb.tone(hz, ms, { volume, wave })` | A synthesized sound; `wave`: `sine`, `square`, `saw`, `triangle`, `noise` |
-| `kb.playAudio(src, { volume, loop })` / `kb.stopAudio(id)` | A sound from `data:audio/…` or a .zip file (up to 8 MB); without `id` — stop all |
+| `kb.playAudio(src, { volume, loop })` / `kb.stopAudio(id)` | A sound from `data:audio/…` (up to 8 MB) or a file of the .zip (a big file plays straight from disk, so music is limited only by the 256 MB of the archive); up to 8 sounds at once; without `id` — stop all |
 | `kb.sound(name, volume)` | A system key sound: `standard`, `space`, `delete`, `enter`, `click` |
 | `kb.haptic(kind)` / `kb.haptic([ms, ms, …])` | Vibration: `tick`, `click`, `heavy`, `double` or your own pattern (pause, vibration, pause…; up to 6 s) |
 | `kb.speak(text, { lang, rate, pitch })` / `kb.stopSpeaking()` | Read aloud with the system speech synthesizer |
@@ -1033,6 +1033,23 @@ kb.overlay([{ type: "batch", shapes: cells.map(function (c) {
   elements of the same list, counts toward the 4 GL layers per list, and is not drawn inside `canvas` panels or groups.
 - Limits: 6000 shapes and 400,000 vertices per batch. The edges are not anti-aliased, so very small circles look more angular
   than in the normal drawing.
+
+## Big files and music
+
+A `.zip` mod may carry music and other large files. When the archive is imported, each file is sorted by size and type:
+
+| Kind of file | Where it goes | Limit |
+|---|---|---|
+| `plugin.json` | read into the plugin | 1 MB |
+| the script (`main.js`) | read into the plugin | 2 MB |
+| small files (under 256 KB, not audio): images, data | stored inside the plugin | 8 MB together |
+| **big files**: audio (`mp3`, `ogg`, `oga`, `opus`, `wav`, `m4a`, `aac`, `flac`, `mid`, `midi`) or any file of 256 KB or more | stored as a real file in the plugin's own folder | 256 MB together |
+
+- `kb.playAudio("music/theme.ogg", { loop: true })` plays a big file straight from disk, with no copy in memory, so a long track does not
+  depend on the 8 MB limit any more.
+- `kb.asset(path)` can still read a big file, but only up to 16 MB. Use `kb.playAudio` for longer ones.
+- A single `.js` or `.json` plugin file is still limited to 8 MB. Music needs the `.zip` form.
+- Installing from a link accepts a `.zip` of up to 256 MB, too (see "Installing and updating from a link").
 
 ## Performance notes for mod authors
 
