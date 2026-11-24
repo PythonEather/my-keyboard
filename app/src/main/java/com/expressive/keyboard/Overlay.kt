@@ -190,7 +190,13 @@ sealed interface OverlayItem {
         val id: String? = null,
         val pluginId: String = "",
         /** Premultiplied alpha blending (used by { type: "batch" }): overlapping translucent shapes mix instead of replacing each other. */
-        val blend: Boolean = false
+        val blend: Boolean = false,
+        /** Render-to-texture: the shader can read the previous frame as `uniform sampler2D iPrev` (two framebuffers, swapped every frame). */
+        val feedback: Boolean = false,
+        /** The host may lower the resolution when frames are slow and lower fps/resolution when the phone heats up. false = exactly what the mod asked for. */
+        val auto: Boolean = true,
+        /** The lowest resolution factor the host governor may use. */
+        val minScale: Float = 0.4f
     ) : OverlayItem {
         val liveKey: String? get() = id?.let { GlSupport.liveKey(pluginId, it) }
     }
@@ -263,7 +269,10 @@ sealed interface OverlayItem {
                         x, y, f(o, "w", 0f), f(o, "h", 0f), frag, vert, uniforms, GlMesh.parse(o["mesh"]),
                         f(o, "scale", 1f).coerceIn(0.1f, 1f), f(o, "fps", 30f).toInt().coerceIn(1, 60),
                         o["depth"] == true, color(o, "clear", Color.Transparent), alpha, rot,
-                        o["id"]?.toString()?.take(64)
+                        o["id"]?.toString()?.take(64),
+                        feedback = o["feedback"] == true,
+                        auto = o["autoQuality"] != false,
+                        minScale = f(o, "minScale", 0.4f).coerceIn(0.1f, 1f)
                     )
                 }
                 "batch" -> GlBatch.parse(o, x, y, f(o, "w", 0f), f(o, "h", 0f), alpha, rot)

@@ -3,4 +3,6 @@
 <full-backup-content>
         <include domain="sharedpref" path="expressive_keyboard_v8_data.xml" />
         <include domain="sharedpref" path="expressive_keyboard_v7_prefs.xml" />
+        <!-- kb.saves: слоты сохранений и рекорды модов -->
+        <include domain="sharedpref" path="plugin_saves.xml" />
 </full-backup-content>

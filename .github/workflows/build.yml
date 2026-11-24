@@ -17,6 +17,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Plugin tests run first and fast (no Gradle): every plugin runs in a Node mock of kb and its GLSL shaders are compiled.
+      # Put your own plugins in ./plugins (a .js with a manifest comment, a .json, or a folder with plugin.json + main.js).
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install the GLSL validator
+        run: sudo apt-get update -q && sudo apt-get install -y -q glslang-tools
+
+      - name: Plugin tests (Node mock of kb + shader compile)
+        run: node tools/plugin-test/run.mjs --require-glslang
+
       - name: Android setup
         uses: ./.github/actions/android-setup
 

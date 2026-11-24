@@ -149,9 +149,13 @@ internal fun PluginsPage(settings: KeyboardSettings) {
     var confirmDelete by remember { mutableStateOf<KeyboardPlugin?>(null) }
     var pendingNetwork by remember { mutableStateOf<KeyboardPlugin?>(null) }
 
-    fun onImported(r: Result<KeyboardPlugin>) {
+    var linkDialog by remember { mutableStateOf(false) }
+    var linkText by remember { mutableStateOf("") }
+    var linkBusy by remember { mutableStateOf(false) }
+
+    fun onImported(r: Result<KeyboardPlugin>, message: String? = null) {
         r.onSuccess { p ->
-            Toast.makeText(context, tr("Плагин «{0}» установлен", tr(p.name)), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, message ?: tr("Плагин «{0}» установлен", tr(p.name)), Toast.LENGTH_SHORT).show()
             expanded = p.id
             if (p.usesNetwork || p.permissions.any { it in setOf("read_text", "clipboard", "launch", "ai", "sensors", "microphone", "app_info", "screen", "media", "settings_layout", "toolbar_layout") }) pendingNetwork = p
         }.onFailure { Toast.makeText(context, tr("Ошибка: {0}", it.message), Toast.LENGTH_LONG).show() }
@@ -220,6 +224,25 @@ internal fun PluginsPage(settings: KeyboardSettings) {
         ActionItem(Icons.Rounded.FileOpen, "Импорт из файла", ".js (мод), .zip (мод с картинками) или .json", onClick = {
             importLauncher.launch(arrayOf("application/json", "application/javascript", "text/javascript", "application/zip", "text/plain", "application/octet-stream", "*/*"))
         })
+        ActionItem(Icons.Rounded.Link, "Install from a link", "A GitHub or other https link to a plugin (.js, .json or .zip); installed plugins are updated when the link has a newer version", onClick = {
+            linkDialog = true
+        })
+        val linkedCount = PluginRepository.linkSources(context).keys.count { id -> plugins.any { it.id == id && !it.builtIn } }
+        if (linkedCount > 0) {
+            ActionItem(Icons.Rounded.Refresh, "Check linked plugins for updates", "$linkedCount plugin(s) were installed from a link", onClick = {
+                Toast.makeText(context, tr("Checking for updates…"), Toast.LENGTH_SHORT).show()
+                scope.launch {
+                    val rs = withContext(Dispatchers.IO) { PluginRepository.checkLinkUpdates(context) }
+                    val updated = rs.count { it.second.getOrNull()?.kind == PluginRepository.LinkResult.Kind.UPDATED }
+                    val failed = rs.count { it.second.isFailure }
+                    Toast.makeText(
+                        context,
+                        tr("Updated: {0}, already up to date: {1}, failed: {2}", updated, rs.size - updated - failed, failed),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            })
+        }
         ActionItem(Icons.Rounded.Code, "Сохранить пример мода (.js)", "Своя панель, кнопка, реакция на слова и хранилище", onClick = {
             modExampleLauncher.launch("my-mod.js")
         })
@@ -261,6 +284,52 @@ internal fun PluginsPage(settings: KeyboardSettings) {
         }
     }
 
+    if (linkDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!linkBusy) linkDialog = false },
+            icon = { Icon(Icons.Rounded.Link, null) },
+            title = { Text(tr("Install from a link")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        tr("Paste an https link to a plugin file (.js, .json or .zip), for example a GitHub link. If the plugin is already installed, it is replaced only when the link has a newer version.") +
+                            "\n\n" + tr("Only install plugins from sources you trust: a plugin runs code inside your keyboard."),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = linkText,
+                        onValueChange = { linkText = it },
+                        singleLine = true,
+                        enabled = !linkBusy,
+                        placeholder = { Text("https://raw.githubusercontent.com/…") }
+                    )
+                    if (linkBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !linkBusy && linkText.isNotBlank(), onClick = {
+                    linkBusy = true
+                    scope.launch {
+                        val r = withContext(Dispatchers.IO) { PluginRepository.installFromUrl(context, linkText) }
+                        linkBusy = false
+                        r.onSuccess { res ->
+                            linkDialog = false
+                            val p = res.plugin
+                            when (res.kind) {
+                                PluginRepository.LinkResult.Kind.UP_TO_DATE ->
+                                    Toast.makeText(context, tr("Already up to date (version {0})", res.previous ?: res.version), Toast.LENGTH_LONG).show()
+                                PluginRepository.LinkResult.Kind.UPDATED ->
+                                    if (p != null) onImported(Result.success(p), tr("Updated: {0} → {1}", res.previous ?: "?", res.version))
+                                PluginRepository.LinkResult.Kind.INSTALLED ->
+                                    if (p != null) onImported(Result.success(p))
+                            }
+                        }.onFailure { Toast.makeText(context, tr("Ошибка: {0}", it.message), Toast.LENGTH_LONG).show() }
+                    }
+                }) { Text(tr("Install")) }
+            },
+            dismissButton = { TextButton(enabled = !linkBusy, onClick = { linkDialog = false }) { Text(tr("Отмена")) } }
+        )
+    }
     confirmDelete?.let { p ->
         AlertDialog(
             onDismissRequest = { confirmDelete = null },

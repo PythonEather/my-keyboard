@@ -384,6 +384,9 @@ has its own render thread and OpenGL context, so a slow shader or a busy script 
 | `depth` | `true` asks for a depth buffer (when the phone has none, the layer still draws and the log says so) |
 | `clear` | The color the buffer is cleared to before each frame (default transparent) |
 | `id` | A name for the layer. With it, `kb.glUniforms(id, { name: value })` changes uniforms without resending the list |
+| `feedback` | `true` turns on render-to-texture: the layer is drawn into two off-screen buffers that swap every frame, and a shader that declares `uniform sampler2D iPrev;` reads the **previous frame** (`texture2D(iPrev, vUv)`, or `texture(iPrev, vUv)` in ES 3). This unlocks motion blur, VHS trails, bloom, mirrors and feedback fractals. Output is premultiplied alpha like any layer. The first frame is transparent. Costs two textures of the buffer size |
+| `autoQuality` | The host lowers the resolution when frames are slow (step down 15% after ~10 slow frames, back up slowly when there is room) and lowers fps and resolution when the phone heats up (Android 10+: `THERMAL_STATUS_MODERATE` = max 30 fps and 85% resolution, `SEVERE` = 20 fps and 70%, `CRITICAL` = 12 fps and 50%). Default `true`; `false` draws exactly what you asked for |
+| `minScale` | The lowest resolution factor the governor may use for this layer, 0.1..1 (default 0.4). It multiplies `scale` |
 | `alpha`, `rotation` | Like any element |
 
 These uniforms are filled in by the keyboard if the shader declares them: `float iTime` (seconds), `float iFrame`, `vec3 iResolution`
@@ -424,10 +427,25 @@ mesh: {
   extension (almost every phone has one of the two).
 - The host keeps up to 32 meshes by `key`. Sending the same mesh again does not upload it to the GPU a second time.
 - Up to 4 GL layers per `kb.overlay` / `kb.background` list. `gl` and `batch` elements are not drawn inside groups or `canvas` panels.
-- A shader that does not read `iTime`, `iFrame`, `iTouch`, `iTilt` or `iAudio` is drawn once and then only when something changes.
+- A shader that does not read `iTime`, `iFrame`, `iTouch`, `iTilt` or `iAudio` is drawn once and then only when something changes. A layer with `feedback: true` is always redrawn at its fps.
+- **Instancing (OpenGL ES 3.0, `#version 300 es`)**: give the mesh `instances: N` and mark per-copy attributes with `divisor: 1`
+  (`aOff: { size: 3, divisor: 1, data: [...] }`, N groups of numbers). One draw call then paints N copies and `gl_InstanceID` counts them.
+  The plain vertex attributes describe one copy. On a phone without ES 3 only one copy is drawn and the log says so.
+- **Shader cache**: on OpenGL ES 3 phones the compiled program is saved to the app cache and loaded on the next launch, so heavy shaders no
+  longer freeze the first frames. Updating the GPU driver or the system invalidates it by itself.
+- **`kb.glDebug(true)`** shows one line per GL layer over the keyboard: fps, frame time, resolution factor, heat level and the last shader error
+  (`kb.glDebug(false)` hides it). The same numbers (plus shader cache hits) are in the mod's diagnostics.
+- `kb.supports("glFeedback")`, `kb.supports("glInstancing")` and `kb.supports("glDebug")` are `true` in versions that have these.
 
 If the shader fails to compile or link, the reason goes to the mod's **Script log** and `kb.glError(fragSource)` returns it (or `null`).
 Reading the same uniform name in both stages with different precision is a common link error: declare it `highp` in both, or only in one stage.
+
+### Installing and updating from a link
+In the plugin settings, **Install from a link** takes an https address of a plugin file (`.js`, `.json` or a `.zip` with media). A GitHub page
+address (`github.com/user/repo/blob/main/x.js`) is turned into the raw file address for you. The app downloads the file, reads its `id` and
+`version`, and installs it. If a plugin with the same `id` is already installed, it is replaced only when the link has a **newer version**
+(`1.10` is newer than `1.9`). The link is remembered, and **Check linked plugins for updates** looks at every remembered link and installs the
+newer versions. Only install plugins from sources you trust: a plugin runs code in your keyboard.
 
 ### Key tilt and labels
 

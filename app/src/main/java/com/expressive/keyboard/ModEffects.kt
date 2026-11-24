@@ -764,14 +764,20 @@ object ModSensors : SensorEventListener {
 
     private var wantTilt = false
     private var wantGyro = false
+    private var wantShake = false
+    /** Есть датчик гравитации: акселерометр нужен только для встряхивания, наклон берётся с гравитации. */
+    private var tiltFromGravity = false
+    private val shake = ShakeDetector()
 
-    fun sync(context: Context, tilt: Boolean, gyro: Boolean) {
-        if (tilt == wantTilt && gyro == wantGyro) return
+    fun sync(context: Context, tilt: Boolean, gyro: Boolean, shakeOn: Boolean = false) {
+        if (tilt == wantTilt && gyro == wantGyro && shakeOn == wantShake) return
         wantTilt = tilt
         wantGyro = gyro
+        wantShake = shakeOn
         val sm = manager ?: context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager ?: return
         sm.unregisterListener(this)
         manager = null
+        tiltFromGravity = sm.getDefaultSensor(Sensor.TYPE_GRAVITY) != null
         if (tilt) {
             val s = sm.getDefaultSensor(Sensor.TYPE_GRAVITY) ?: sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
             if (s != null && sm.registerListener(this, s, SensorManager.SENSOR_DELAY_GAME)) manager = sm
@@ -784,6 +790,23 @@ object ModSensors : SensorEventListener {
             val s = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
             if (s != null && sm.registerListener(this, s, SensorManager.SENSOR_DELAY_GAME)) manager = sm
         }
+        if (shakeOn) {
+            val s = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            if (s != null && sm.registerListener(this, s, SensorManager.SENSOR_DELAY_GAME)) manager = sm
+            shake.reset()
+        }
+    }
+
+    private fun feedTilt(e: SensorEvent, k: Float, now: Long) {
+        // сглаживание: акселерометр без него дрожит
+        val g = SensorManager.GRAVITY_EARTH
+        tiltX += (-e.values[0] / g - tiltX) * k
+        tiltY += (e.values[1] / g - tiltY) * k
+        tiltZ += (e.values[2] / g - tiltZ) * k
+        DynShadow.update(tiltX, tiltY)
+        if (now - lastTilt < 16L) return
+        lastTilt = now
+        ScriptHost.emit("tilt", mapOf("x" to tiltX, "y" to tiltY, "z" to tiltZ))
     }
 
     override fun onSensorChanged(e: SensorEvent) {
@@ -794,18 +817,14 @@ object ModSensors : SensorEventListener {
                 lastGyro = now
                 ScriptHost.emit("gyro", mapOf("x" to e.values[0], "y" to e.values[1], "z" to e.values[2]))
             }
-            else -> {
-                // сглаживание: акселерометр без него дрожит
-                val k = if (e.sensor.type == Sensor.TYPE_GRAVITY) 1f else 0.15f
-                val g = SensorManager.GRAVITY_EARTH
-                tiltX += (-e.values[0] / g - tiltX) * k
-                tiltY += (e.values[1] / g - tiltY) * k
-                tiltZ += (e.values[2] / g - tiltZ) * k
-                DynShadow.update(tiltX, tiltY)
-                if (now - lastTilt < 16L) return
-                lastTilt = now
-                ScriptHost.emit("tilt", mapOf("x" to tiltX, "y" to tiltY, "z" to tiltZ))
+            Sensor.TYPE_ACCELEROMETER -> {
+                if (wantShake) {
+                    val strength = shake.feed(e.values[0], e.values[1], e.values[2], now)
+                    if (strength != null) ScriptHost.emit("shake", mapOf("strength" to strength))
+                }
+                if (wantTilt && !tiltFromGravity) feedTilt(e, 0.15f, now)
             }
+            else -> feedTilt(e, 1f, now)
         }
     }
 

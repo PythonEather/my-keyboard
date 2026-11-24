@@ -1169,17 +1169,84 @@ object PluginRepository {
                     }
                 }
             } ?: throw IllegalStateException("Could not open the file")
-            // .zip начинается с «PK»
-            val isZip = tmp.inputStream().use { it.read() == 'P'.code && it.read() == 'K'.code }
-            if (isZip) importZip(app, tmp)
-            else {
-                require(tmp.length() <= MAX_FILE) { "The file is larger than 8 MB (a plugin with music goes into a .zip)" }
-                importText(app, tmp.readText()).getOrThrow()
-            }
+            installFile(app, tmp)
         } finally {
             tmp.delete()
         }
     }
+
+    /** A plugin file on disk (a .zip, a .json or a .js mod) -> installed plugin. */
+    private fun installFile(app: Context, tmp: File): KeyboardPlugin {
+        // .zip начинается с «PK»
+        val isZip = tmp.inputStream().use { it.read() == 'P'.code && it.read() == 'K'.code }
+        return if (isZip) importZip(app, tmp)
+        else {
+            require(tmp.length() <= MAX_FILE) { "The file is larger than 8 MB (a plugin with music goes into a .zip)" }
+            importText(app, tmp.readText()).getOrThrow()
+        }
+    }
+
+    // ------------------------------------------------------------ install and update from a link
+
+    /** What an install from a link did: a new plugin, a newer version over the installed one, or nothing because the link has no newer version. */
+    class LinkResult(val plugin: KeyboardPlugin?, val id: String, val version: String, val kind: Kind, val previous: String?) {
+        enum class Kind { INSTALLED, UPDATED, UP_TO_DATE }
+    }
+
+    private fun linkPrefs(app: Context) = app.getSharedPreferences("plugin_sources", Context.MODE_PRIVATE)
+
+    /** Plugin id -> the link it was installed from. */
+    fun linkSources(context: Context): Map<String, String> =
+        linkPrefs(context.applicationContext).all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap()
+
+    /** Id and version of a downloaded plugin file, read without installing it. */
+    private fun peek(tmp: File): Pair<String, String> {
+        val isZip = tmp.inputStream().use { it.read() == 'P'.code && it.read() == 'K'.code }
+        val manifest = if (isZip) {
+            java.util.zip.ZipFile(tmp).use { z ->
+                val e = z.entries().asSequence()
+                    .filter { !it.isDirectory && (it.name.endsWith("plugin.json") || it.name.endsWith("manifest.json")) }
+                    .minByOrNull { it.name.length } ?: throw IllegalArgumentException("The .zip has no plugin.json")
+                z.getInputStream(e).bufferedReader().use { it.readText() }
+            }
+        } else {
+            require(tmp.length() <= MAX_FILE) { "The file is larger than 8 MB (a plugin with music goes into a .zip)" }
+            val clean = tmp.readText().removePrefix("\uFEFF").trim()
+            if (clean.startsWith("{")) clean else PluginParser.jsToJson(clean)
+        }
+        val o = JSONObject(manifest)
+        return o.optString("id").trim() to o.optString("version", "").trim()
+    }
+
+    /**
+     * Downloads a plugin from an https link (a GitHub page address is turned into the raw file address) and installs it.
+     * If a plugin with the same id is already installed, it is replaced only when the link has a newer version (or force is true).
+     * The link is remembered, so checkLinkUpdates can look for new versions later.
+     */
+    fun installFromUrl(context: Context, rawUrl: String, force: Boolean = false): Result<LinkResult> = runCatching {
+        val app = context.applicationContext
+        val url = PluginLink.normalize(rawUrl)
+        val tmp = File.createTempFile("plugin_link", ".tmp", app.cacheDir)
+        try {
+            PluginLink.download(url, tmp, MAX_ZIP)
+            val (id, version) = peek(tmp)
+            require(id.isNotBlank()) { "The file has no plugin id" }
+            val have = plugins.firstOrNull { it.id == id && !it.builtIn }
+            if (have != null && !force && !PluginLink.isNewer(version, have.version)) {
+                linkPrefs(app).edit().putString(id, url).apply()
+                return@runCatching LinkResult(have, id, version, LinkResult.Kind.UP_TO_DATE, have.version)
+            }
+            val plugin = installFile(app, tmp)
+            linkPrefs(app).edit().putString(plugin.id, url).apply()
+            LinkResult(plugin, plugin.id, plugin.version, if (have != null) LinkResult.Kind.UPDATED else LinkResult.Kind.INSTALLED, have?.version)
+        } finally {
+            tmp.delete()
+        }
+    }
+
+    /** Looks at the link of every plugin that was installed from one and installs the newer versions. */
+    fun checkLinkUpdates(context: Context): List<Pair<String, Result<LinkResult>>> =
+        linkSources(context).filter { (id, _) -> plugins.any { it.id == id && !it.builtIn } }.map { (id, url) -> id to installFromUrl(context, url) }
 
     /** Архив: большие файлы (музыка) потоком в папку плагина, остальное — в JSON плагина, как раньше. */
     private fun importZip(app: Context, zip: File): KeyboardPlugin {
@@ -1224,6 +1291,7 @@ object PluginRepository {
         val app = context.applicationContext
         File(File(app.filesDir, DIR), "$id.json").delete()
         PluginParser.mediaDir(app, id).deleteRecursively()
+        linkPrefs(app).edit().remove(id).apply()
         reload(app)
     }
 

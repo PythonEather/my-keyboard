@@ -145,6 +145,9 @@ import kotlin.math.sqrt
 
 private val OFFER_BREAKERS = setOf(KeyType.CHARACTER, KeyType.SPACE, KeyType.BACKSPACE, KeyType.ENTER)
 
+/** Скорость набора для события "typing" (только время и вид клавиши, без букв). */
+private val typingStats = TypingStats()
+
 private val PAIRS = mapOf('(' to ')', '[' to ']', '{' to '}', '«' to '»')
 
 /** Поле ввода не удалось определить — сохраняем страницу символов при ближайшем перезапуске окна. */
@@ -2099,6 +2102,22 @@ class ComposeKeyboardService : InputMethodService(),
         HapticsEngine.keyPress(this, inputView, settings, special)
         if (ScriptHost.has("press") && !flags.isPassword) {
             ScriptHost.emit("press", mapOf("label" to KeyboardGeometry.nameOf(key), "type" to key.type.name.lowercase()))
+        }
+        // "typing": скорость набора и стирания без самих букв (для мода, который реагирует на темп печати)
+        if (ScriptHost.has("typing") && !flags.isPassword && !settings.incognito) {
+            val kind = when (key.type) {
+                KeyType.SPACE -> "space"
+                KeyType.ENTER -> "enter"
+                KeyType.BACKSPACE -> "backspace"
+                KeyType.SHIFT -> "shift"
+                KeyType.CHARACTER -> "letter"
+                else -> "other"
+            }
+            val s = typingStats.press(kind, android.os.SystemClock.uptimeMillis())
+            ScriptHost.emit(
+                "typing",
+                mapOf("kind" to s.kind, "cps" to s.cps.toDouble(), "backspaceCps" to s.backspaceCps.toDouble(), "burst" to s.burst, "gapMs" to s.gapMs.toDouble())
+            )
         }
     }
 

@@ -171,8 +171,10 @@ private class Mod(val plugin: KeyboardPlugin) {
     /** Время последних запросов kb.ai — не больше 10 в минуту. */
     val aiTimes = ArrayDeque<Long>()
     /** Звуки, которые мод сейчас играет (kb.playAudio). */
-    val players = HashMap<Int, android.media.MediaPlayer>()
+    val players = HashMap<Int, ModVoice>()
     var nextPlayer = 1
+    /** Одна реверберация на мод: голоса с reverb > 0 отправляют в неё сигнал. */
+    val reverb = ModReverb()
     /** Мод хочет касания по клавиатуре (kb.captureTouches): пока так, печатать нельзя. */
     var touches = false
     /** Зона перехвата {x, y, w, h} в dp (null — вся клавиатура) и угол кнопки ✕. */
@@ -182,6 +184,8 @@ private class Mod(val plugin: KeyboardPlugin) {
     var panZoom = false
     /** Когда мод последний раз не уложился во время: старые штрафы за медленные вызовы сгорают. */
     var lastTimeoutAt = 0L
+    /** Мод отключён хостом за три превышения лимита подряд: его обработчики и таймеры сняты до перезагрузки. */
+    var stopped = false
     /** Эффекты клавиш (kb.keyEffects). */
     var keyFx: Map<String, KeyFx> = emptyMap()
     /** Мод слушает микрофон (kb.audio.start). */
@@ -208,6 +212,8 @@ object ScriptHost {
         private set
     /** Журнал скриптов: console.log, ошибки и время работы. */
     val logs = mutableStateMapOf<String, List<ScriptLogLine>>()
+    /** Моды, которые хост сам отключил (id -> причина): экран плагинов показывает это в карточке. Сбрасывается при перезагрузке мода. */
+    val stoppedMods = mutableStateMapOf<String, String>()
     /** Всё, что моды рисуют поверх клавиатуры. */
     var overlayItems by mutableStateOf<List<OverlayItem>>(emptyList())
         private set
@@ -311,6 +317,13 @@ object ScriptHost {
         })();
     """.trimIndent()
 
+    /** Вторая часть prelude (kb.require, kb.saves…) лежит файлом в assets: её же гоняет проверка плагинов в CI. */
+    private var extraPrelude: String? = null
+
+    private fun preludeExtra(ctx: Context): String = extraPrelude ?: runCatching {
+        ctx.assets.open("kb/prelude-extra.js").bufferedReader().use { it.readText() }
+    }.getOrDefault("").also { extraPrelude = it }
+
     private const val CALL_BUDGET_MS = 300L
     private const val LOAD_BUDGET_MS = 2000L
     private const val MAX_TIMERS = 64
@@ -320,8 +333,10 @@ object ScriptHost {
         "selection" to "read_text", "pick" to "read_text", "voice" to "read_text", "autocorrect" to "read_text", "glide" to "read_text",
         // координаты пальца на клавиатуре — это и есть набираемый текст
         "pointer" to "read_text",
+        // темп набора (без букв): по времени нажатий тоже видно, как человек печатает
+        "typing" to "read_text",
         "clipboard" to "clipboard",
-        "tilt" to "sensors", "gyro" to "sensors", "audio" to "microphone", "app" to "app_info",
+        "tilt" to "sensors", "gyro" to "sensors", "shake" to "sensors", "audio" to "microphone", "app" to "app_info",
         "media" to "media"
     )
 
@@ -377,6 +392,7 @@ object ScriptHost {
             "calls: " + s.calls + "  ·  avg: " + String.format(java.util.Locale.US, "%.1f", avg) + " ms  ·  max: " + s.maxMs + " ms" +
             (if (s.slowest.isNotEmpty()) " (" + s.slowest + ")" else "") + "\n" +
             "slow (>=" + SLOW_CALL_MS + " ms): " + s.slow + "  ·  timeouts: " + s.timeouts + "  ·  errors: " + s.errors + "\n" +
+            (stoppedMods[pluginId]?.let { "STOPPED by the keyboard: $it. Reload the plugin to run it again.\n" } ?: "") +
             "handlers: " + m.handlers.values.sumOf { it.size } + "  ·  timers: " + m.timers.size +
             (GlSupport.statsLine()?.let { "\n" + it } ?: "")
     }
@@ -425,6 +441,8 @@ object ScriptHost {
         return try {
             val r = m.runtime.execute(budget, block)
             record(m, t0, what, false)
+            // «три раза подряд»: вызов, уложившийся во время, обрывает серию
+            m.timeouts = 0
             Result.success(r)
         } catch (t: Throwable) {
             record(m, t0, what, true)
@@ -440,6 +458,8 @@ object ScriptHost {
                     m.handlers.clear()
                     m.timers.values.forEach(main::removeCallbacks)
                     m.timers.clear()
+                    m.stopped = true
+                    stoppedMods[m.plugin.id] = "blew its time limit 3 times in a row"
                     log(m.plugin.id, "⏸ mod slowed the keyboard down and was turned off until restart")
                     appContext?.let { c ->
                         main.post { Toast.makeText(c, "Plugin \"" + m.plugin.id + "\" was too slow and is stopped until restart", Toast.LENGTH_LONG).show() }
@@ -484,6 +504,7 @@ object ScriptHost {
         appContext = context.applicationContext
         mods.values.forEach(::stop)
         mods = emptyMap()
+        stoppedMods.clear()
         if (prompt != null) {
             prompt = null
             bridge?.scriptPrompt(false)
@@ -510,7 +531,7 @@ object ScriptHost {
             }.onFailure { log(p.id, "✕ " + describe(it)) }.getOrNull() ?: continue
             m.runtime = runtime
             exec(m, LOAD_BUDGET_MS, "load") {
-                runtime.load(bindings(m), PRELUDE, src, p.id + ".js")
+                runtime.load(bindings(m), PRELUDE + "\n" + preludeExtra(context), src, p.id + ".js")
             }.onSuccess {
                 next[p.id] = m
                 log(p.id, "✓ loaded in " + (SystemClock.uptimeMillis() - started) + " ms")
@@ -526,8 +547,9 @@ object ScriptHost {
         m.timers.values.forEach(main::removeCallbacks)
         m.timers.clear()
         m.parked.clear()
-        m.players.values.forEach { runCatching { it.release() } }
+        m.players.values.forEach { runCatching { it.stop() } }
         m.players.clear()
+        m.reverb.release()
         m.runtime.close()
     }
 
@@ -565,7 +587,7 @@ object ScriptHost {
         if (!shown) ModFx.clearPointers()
         val usable = shown && !privateMode
         val nativeTilt = ModFx.usesTilt() || ModFx.shaderItems || ModFx.glItems || ModFx.post != null
-        ModSensors.sync(ctx, shown && (nativeTilt || DynShadow.enabled) || usable && listens("tilt"), usable && listens("gyro"))
+        ModSensors.sync(ctx, shown && (nativeTilt || DynShadow.enabled) || usable && listens("tilt"), usable && listens("gyro"), usable && listens("shake"))
         ModAudio.sync(ctx, usable && !voiceBusy && mods.values.any { it.audio && it.has("microphone") })
         ModFx.usesPointer(!privateMode && listens("pointer"))
         MediaBridge.sync(ctx, usable && listens("media"))
@@ -1064,7 +1086,9 @@ object ScriptHost {
     }
 
     /** Звук из data: URI или файла архива мода. Большие файлы архива (музыка) играют прямо с диска, без загрузки в память. */
-    private fun playAudio(ctx: Context, m: Mod, src: String, volume: Float, loop: Boolean): Int {
+    private fun playAudio(ctx: Context, m: Mod, src: String, o: Map<String, Any?>): Int {
+        val loop = o["loop"] == true
+        val gapless = o["gapless"] == true
         require(m.players.size < 8) { "playAudio: at most 8 sounds at once" }
         val stored = if (src.startsWith("data:")) null else m.plugin.files[src] ?: throw IllegalArgumentException("playAudio: no file \"$src\"")
         val path: String = if (stored != null && stored.startsWith(PluginParser.MEDIA_MARK)) {
@@ -1078,24 +1102,24 @@ object ScriptHost {
             f.absolutePath
         }
         val pid = m.nextPlayer++
-        val mp = android.media.MediaPlayer()
-        mp.setAudioAttributes(
-            android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
-        )
-        mp.setDataSource(path)
-        mp.isLooping = loop
-        mp.setVolume(volume, volume)
-        mp.setOnCompletionListener {
-            if (!loop) {
-                m.players.remove(pid)
-                it.release()
-            }
-        }
-        mp.setOnPreparedListener { it.start() }
-        mp.prepareAsync()
-        m.players[pid] = mp
+        val voice = ModVoice(path, loop, gapless, m.reverb) { m.players.remove(pid) }
+        applyVoiceOptions(voice, o)
+        m.players[pid] = voice
+        voice.start()
         return pid
+    }
+
+    /** Общие поля kb.playAudio и kb.setAudio: volume, pan, pitch, rate, distance, maxDistance, reverb, reverbSize. */
+    private fun applyVoiceOptions(v: ModVoice, o: Map<String, Any?>) {
+        fun f(k: String): Float? = (o[k] as? Number)?.toFloat()?.takeIf { it.isFinite() }
+        f("volume")?.let { v.volume = it.coerceIn(0f, 1f) }
+        f("pan")?.let { v.pan = it.coerceIn(-1f, 1f) }
+        f("pitch")?.let { v.pitch = it.coerceIn(0.25f, 4f) }
+        f("rate")?.let { v.rate = it.coerceIn(0.25f, 4f) }
+        f("distance")?.let { v.distance = it.coerceAtLeast(0f) }
+        f("maxDistance")?.let { v.maxDistance = it.coerceAtLeast(1f) }
+        f("reverb")?.let { v.reverbSend = it.coerceIn(0f, 1f) }
+        f("reverbSize")?.let { v.reverbSize = it.coerceIn(0f, 1f) }
     }
 
     private fun haptic(ctx: Context, kind: String, pattern: LongArray?) {
@@ -1357,6 +1381,13 @@ object ScriptHost {
         }
         def(kb, "shaderError") { a -> ModShaders.error(str(a, 0)) }
         def(kb, "glError") { a -> GlSupport.error(str(a, 0)) }
+        // отладочная строка поверх GL-слоёв: fps, время кадра, коэффициент разрешения, нагрев телефона, последняя ошибка шейдера
+        def(kb, "glDebug") { a ->
+            val v = a.getOrNull(0)
+            val on = v == true || (v is Number && v.toInt() != 0)
+            GlSupport.perfVisible.value = on
+            on
+        }
         // меняет uniform GL-слоя с этим id (поле id в элементе type: "gl") без пересылки списка: рендерер подхватит значения на следующем кадре
         def(kb, "glUniforms") { a ->
             val gid = str(a, 0)
@@ -1368,7 +1399,7 @@ object ScriptHost {
         def(kb, "supports") { a ->
             when (str(a, 0)) {
                 "shader", "postEffect" -> ModShaders.supported
-                "gl", "batch", "groups", "panZoom" -> true
+                "gl", "batch", "groups", "panZoom", "glFeedback", "glInstancing", "glDebug", "glQuality" -> true
                 "labelBlur" -> android.os.Build.VERSION.SDK_INT >= 31
                 "particles", "keyEffects", "pointer" -> true
                 "sensors" -> ModSensors.available(ctx)
@@ -1529,6 +1560,24 @@ object ScriptHost {
         def(storage, "keys") { _ -> prefs.all.keys.toList() }
         def(storage, "clear") { _ -> prefs.edit().clear().apply(); Unit }
         kb["storage"] = storage
+
+        // --- сохранения: именованные слоты и рекорды. Лежат в одном файле, который входит в системную резервную копию;
+        // удобный интерфейс (save/load/list/highScore/exportText…) надстраивает assets/kb/prelude-extra.js
+        val savePrefs = ctx.getSharedPreferences("plugin_saves", Context.MODE_PRIVATE)
+        val savePrefix = "$id/"
+        val saves = linkedMapOf<String, Any?>()
+        def(saves, "rawGet") { a -> savePrefs.getString(savePrefix + str(a, 0), null) }
+        def(saves, "rawSet") { a ->
+            val key = savePrefix + str(a, 0)
+            val raw = str(a, 1, "null")
+            require(raw.length < 256 * 1024) { "saves: value is larger than 256 KB" }
+            require(savePrefs.contains(key) || savePrefs.all.keys.count { it.startsWith(savePrefix) } < 100) { "saves: at most 100 slots and boards per plugin" }
+            savePrefs.edit().putString(key, raw).apply()
+            Unit
+        }
+        def(saves, "rawRemove") { a -> savePrefs.edit().remove(savePrefix + str(a, 0)).apply(); Unit }
+        def(saves, "rawKeys") { _ -> savePrefs.all.keys.filter { it.startsWith(savePrefix) }.map { it.removePrefix(savePrefix) } }
+        kb["saves"] = saves
 
         // --- настройки клавиатуры
         val settings = linkedMapOf<String, Any?>()
@@ -1774,14 +1823,20 @@ object ScriptHost {
                 (o["volume"] as? Double)?.toFloat()?.coerceIn(0f, 1f) ?: 0.5f, o["wave"]?.toString() ?: "sine")
             Unit
         }
-        def(kb, "playAudio") { a ->
-            val o = opts(a, 1)
-            playAudio(ctx, m, str(a, 0), (o["volume"] as? Double)?.toFloat()?.coerceIn(0f, 1f) ?: 1f, o["loop"] == true)
+        // { volume 0..1, loop, gapless (бесшовный цикл без щелчка на стыке), pan −1..1, pitch и rate 0.25..4,
+        //   distance / maxDistance (тише с расстоянием), reverb 0..1 и reverbSize 0..1 }
+        def(kb, "playAudio") { a -> playAudio(ctx, m, str(a, 0), opts(a, 1)) }
+        // kb.setAudio(id, { pan, volume, pitch, rate, distance, maxDistance, reverb }): меняет играющий звук на лету
+        def(kb, "setAudio") { a ->
+            val v = m.players[num(a, 0, -1.0).toInt()] ?: return@def false
+            applyVoiceOptions(v, opts(a, 1))
+            v.update()
+            true
         }
         def(kb, "stopAudio") { a ->
             val pid = num(a, 0, -1.0).toInt()
             val list = if (pid < 0) m.players.keys.toList() else listOf(pid)
-            list.forEach { k -> m.players.remove(k)?.let { runCatching { it.stop(); it.release() } } }
+            list.forEach { k -> m.players.remove(k)?.stop() }
             Unit
         }
         def(kb, "sound") { a ->
