@@ -2,6 +2,9 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.17
+- Fix: a picture chosen in a mod's image setting was always refused with "The picture could not be read" (the size check treated its normal empty answer as a failure)
+
 ## 11.2.16
 - Picture settings for mods: a config option with `"type": "image"` lets the user pick a picture from the gallery; `kb.config().photo` goes straight into `textures: { iTex0: ... }`
 - An empty texture source is now an empty slot (one transparent pixel) instead of a mistake, so a mod can draw a placeholder until a picture is chosen

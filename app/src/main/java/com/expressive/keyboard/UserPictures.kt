@@ -32,7 +32,9 @@ internal object UserPictures {
         try {
             val resolver = ctx.applicationContext.contentResolver
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return null
+            // with inJustDecodeBounds decodeStream always returns null (only the size fields are filled in), so its result must not be checked
+            val sizeStream = resolver.openInputStream(uri) ?: return null
+            sizeStream.use { BitmapFactory.decodeStream(it, null, bounds) }
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
             var sample = 1
             while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= MAX_SIDE) sample *= 2
