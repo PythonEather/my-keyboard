@@ -17,7 +17,7 @@ internal object GlTextureFiles {
     /** [stamp] changes when the file changes (plugin updated), so a texture uploaded earlier is replaced. */
     class Source(val stamp: Int, val load: () -> ByteArray?)
 
-    private const val MAX = 64
+    private const val MAX = 640
     private val map: MutableMap<String, Source> = java.util.Collections.synchronizedMap(
         object : LinkedHashMap<String, Source>(16, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Source>?): Boolean = size > MAX
@@ -77,6 +77,9 @@ internal class GlTexturePool(private val glVersion: () -> Int) {
     private var blank = 0
     private var maxSide = 0
 
+    /** Pictures that are not in the layer's `textures` but are still in use: the ones of the 3D scene's models and objects. */
+    var extraKeep: () -> Collection<GlTexSpec> = { emptyList() }
+
     /** Call at the start of every frame: cheap unless the layer item changed. */
     fun sync(item: OverlayItem.Gl) {
         if (item === synced) return
@@ -84,6 +87,7 @@ internal class GlTexturePool(private val glVersion: () -> Int) {
         byName = item.textures.withIndex().associate { it.value.name to Entry(it.index, it.value) }
         val live = HashMap<String, GlTexSpec>()
         for (s in item.textures) live[s.key] = s
+        for (s in extraKeep()) live[s.key] = s
         val entries = cache.entries.iterator()
         while (entries.hasNext()) {
             val e = entries.next()
@@ -102,6 +106,15 @@ internal class GlTexturePool(private val glVersion: () -> Int) {
     fun bind(item: OverlayItem.Gl, e: Entry, loc: Int) {
         val tex = texture(item, e.spec)
         val unit = 1 + e.index
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + unit)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tex.id)
+        GLES20.glUniform1i(loc, unit)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+    }
+
+    /** Binds the picture of [spec] (a model's or an object's, not one of the layer's `textures`) to texture [unit] and points sampler [loc] at it. */
+    fun bindSpec(item: OverlayItem.Gl, spec: GlTexSpec, loc: Int, unit: Int) {
+        val tex = texture(item, spec)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + unit)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tex.id)
         GLES20.glUniform1i(loc, unit)

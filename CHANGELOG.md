@@ -2,6 +2,16 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.20
+- Built-in 3D engine: a `gl` layer can have `scene: { models, camera, lights, objects, ambient, fog }` and the keyboard draws it with its own lit renderer, with no shader code (a layer with a scene needs no `frag`)
+- Models: `.obj` (with `.mtl`) and `.glb` / `.gltf` from a `.zip` mod, plus built-in shapes `cube`, `plane`, `sphere`, `cylinder`, `quad`; per-object `pos`, `rot`, `scale`, `visible` and `material` (color, emissive, specular, shininess, texture, unlit, doubleSided, alphaCut)
+- Lights: up to 8 point and sun lights, ambient light and fog, lit per pixel
+- Shared depth: the objects are drawn after the layer's shader into the same depth buffer, and a background shader can read the camera (`uViewProj`, `uInvViewProj`, `uCamPos`, `uCamForward`, `uCamRight`, `uCamUp`, `uCamParams`) and write `gl_FragDepth`
+- `kb.scene(id, patch)` changes the camera, lights, fog or objects of a live scene; `kb.supports("scene3d")`
+- New example plugin `gl_scene.js`; the plugin test tool accepts a `gl` layer with a `scene` and no `frag`
+- Pictures of a scene share the layer's texture pool (up to 640 pictures)
+- `PLUGINS.md` (new section **3D scenes**) and `README.md` updated
+
 ## 11.2.19
 - Fix: Lua mods failed to load in the release app with `no non-static method LuaPluginRuntime.dispatchHost` (the code shrinker removed the method that the native Lua engine calls); the ProGuard rule now keeps it, like for QuickJS
 

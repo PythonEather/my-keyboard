@@ -198,7 +198,9 @@ sealed interface OverlayItem {
         /** The lowest resolution factor the host governor may use. */
         val minScale: Float = 0.4f,
         /** Images the shader reads as `uniform sampler2D <name>` (see GlTextures): files of the plugin's .zip or data: URIs. */
-        val textures: List<GlTexSpec> = emptyList()
+        val textures: List<GlTexSpec> = emptyList(),
+        /** The built-in 3D engine: models, camera, lights and objects drawn after the shader, in the same depth buffer (see Scene3d*.kt). */
+        val scene: SceneSpec? = null
     ) : OverlayItem {
         val liveKey: String? get() = id?.let { GlSupport.liveKey(pluginId, it) }
     }
@@ -263,19 +265,23 @@ sealed interface OverlayItem {
                     Shader(x, y, f(o, "w", 0f), f(o, "h", 0f), prog, uniforms, alpha, rot)
                 }
                 "gl" -> {
-                    val frag = o["frag"]?.toString().orEmpty()
+                    val scene = SceneParser.parse(o["scene"])
+                    // a layer with a scene needs no shader: without one it draws no background
+                    val frag = o["frag"]?.toString().orEmpty().ifBlank { if (scene != null) SceneHost.BACKGROUND_FRAG else "" }
                     if (frag.isBlank() || frag.length > GlSupport.MAX_SRC) return null
                     val vert = o["vert"]?.toString().orEmpty().take(GlSupport.MAX_SRC)
                     val uniforms = (o["uniforms"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
                     Gl(
                         x, y, f(o, "w", 0f), f(o, "h", 0f), frag, vert, uniforms, GlMesh.parse(o["mesh"]),
                         f(o, "scale", 1f).coerceIn(0.1f, 1f), f(o, "fps", 30f).toInt().coerceIn(1, 60),
-                        o["depth"] == true, color(o, "clear", Color.Transparent), alpha, rot,
+                        // a scene needs the depth buffer (objects hide behind what the shader draws), unless the mod says depth: false
+                        if (scene != null) o["depth"] != false else o["depth"] == true, color(o, "clear", Color.Transparent), alpha, rot,
                         o["id"]?.toString()?.take(64),
                         feedback = o["feedback"] == true,
                         auto = o["autoQuality"] != false,
                         minScale = f(o, "minScale", 0.4f).coerceIn(0.1f, 1f),
-                        textures = GlTextures.parse(o["textures"])
+                        textures = GlTextures.parse(o["textures"]),
+                        scene = scene
                     )
                 }
                 "batch" -> GlBatch.parse(o, x, y, f(o, "w", 0f), f(o, "h", 0f), alpha, rot)

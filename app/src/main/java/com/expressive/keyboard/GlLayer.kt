@@ -146,6 +146,23 @@ object GlSupport {
 
     fun liveFor(key: String?): Map<String, FloatArray>? = if (key == null) null else live[key]
 
+    /** kb.scene(id, patch): changes the live 3D scene of the gl layer with this key. Returns the pictures the objects now name, or null when there is no such scene. */
+    fun patchScene(key: String, patch: Map<*, *>): List<String>? {
+        val named = SceneStore.patch(key, patch) ?: return null
+        liveVersion++
+        return named
+    }
+
+    /** A new kb.overlay: the scene starts again from its description. */
+    fun resetScene(key: String, spec: SceneSpec) {
+        SceneStore.reset(key, spec)
+        liveVersion++
+    }
+
+    fun dropScene(key: String) {
+        SceneStore.drop(key)
+    }
+
     fun fail(frag: String, message: String) {
         if (errors.size > 32) errors.clear()
         errors[frag.hashCode()] = message
@@ -293,6 +310,12 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
     /** Images of the layer (textures: { iTex0: ... }), see GlTextureStore.kt. */
     private val texturePool = GlTexturePool { glVersion }
 
+    // the built-in 3D engine (scene: { ... } of the layer): drawn after the shader, into the same framebuffer and depth buffer
+    private var scene3d: Scene3dRenderer? = null
+    private var sceneSnap: SceneSnapshot? = null
+    @Volatile private var sceneFrame: SceneFrame? = null
+    private val sceneErrors = ArrayList<String>()
+
     // host quality: resolution governor + heat, and the debug line
     private val governor = GlGovernor()
     @Volatile private var quality = 1f
@@ -320,6 +343,7 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
 
     init {
         isDaemon = true
+        texturePool.extraKeep = { scene3d?.textureSpecs() ?: emptyList() }
     }
 
     fun setSize(w: Int, h: Int) {
@@ -405,6 +429,9 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
     }
 
     private fun releaseEgl() {
+        scene3d?.release()
+        scene3d = null
+        sceneSnap = null
         texturePool.release()
         try {
             if (display != EGL14.EGL_NO_DISPLAY) {
@@ -814,6 +841,8 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
                 }
                 "iTilt" -> setFloats(un, floatArrayOf(ModSensors.tiltX, ModSensors.tiltY, ModSensors.tiltZ))
                 "iAudio" -> setFloats(un, floatArrayOf(ModAudio.level))
+                // the camera of the 3D scene, so a background shader can draw what the engine's objects must hide behind
+                in SceneFrame.UNIFORMS -> sceneFrame?.uniform(un.name)?.let { setCached(un, it) }
                 "iPrev" -> {
                     if (fbReady) {
                         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
@@ -859,12 +888,14 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
         EGL14.eglQuerySurface(display, surface, EGL14.EGL_HEIGHT, sh, 0)
         val w = max(1, sw[0])
         val h = max(1, sh[0])
-        val offscreen = item.feedback && ensureFbo(w, h, item.depth && depthOk, item)
+        val scene = item.scene
+        val wantDepth = (item.depth || scene != null) && depthOk
+        val offscreen = item.feedback && ensureFbo(w, h, wantDepth, item)
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, if (offscreen) fbo[fbCur] else 0)
         GLES20.glViewport(0, 0, w, h)
         val a = item.clear.alpha
         GLES20.glClearColor(item.clear.red * a, item.clear.green * a, item.clear.blue * a, a)
-        val useDepth = item.depth && depthOk
+        val useDepth = wantDepth
         if (useDepth) GLES20.glEnable(GLES20.GL_DEPTH_TEST) else GLES20.glDisable(GLES20.GL_DEPTH_TEST)
         if (item.blend) {
             GLES20.glEnable(GLES20.GL_BLEND)
@@ -874,7 +905,21 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
         }
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or if (useDepth) GLES20.GL_DEPTH_BUFFER_BIT else 0)
 
-        if (!ensureProgram(item)) animated = false
+        // the scene of this frame: the live state (patches of kb.scene) and what the camera sees; the background shader reads the camera too
+        var sceneState: SceneState? = null
+        var camFrame: SceneFrame? = null
+        if (scene != null) {
+            val snap = SceneStore.read(item.liveKey, scene, sceneSnap)
+            sceneSnap = snap
+            sceneState = snap.state
+            camFrame = SceneFrame.of(snap.state.camera, w.toFloat() / h)
+        }
+        sceneFrame = camFrame
+
+        if (scene != null && SceneHost.isDefaultBackground(item.frag)) {
+            // no shader of its own: nothing to draw behind the objects, and nothing animates until kb.scene changes something
+            animated = false
+        } else if (!ensureProgram(item)) animated = false
         else {
             if (item.depth && !depthOk && !depthWarned) {
                 depthWarned = true
@@ -882,6 +927,7 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
             }
             drawMesh(p, w, h, t, frame)
         }
+        if (scene != null && sceneState != null && camFrame != null) drawScene(item, scene, sceneState, camFrame, useDepth)
         if (offscreen) {
             blit(w, h, fboTex[fbCur], item)
             fbCur = 1 - fbCur
@@ -892,6 +938,29 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
             if (err == EGL14.EGL_BAD_SURFACE || err == EGL14.EGL_BAD_NATIVE_WINDOW || err == EGL14.EGL_CONTEXT_LOST) return false
         }
         return true
+    }
+
+    private fun pluginOf(): String = prepared?.item?.pluginId.orEmpty()
+
+    /** Errors of the 3D engine (a model that did not load, a missing picture) go to the same place as shader errors: kb.glError and the log of the mod. */
+    private fun sceneReport(msg: String) {
+        val item = prepared?.item ?: return
+        if (sceneErrors.size >= 6) sceneErrors.removeAt(0)
+        sceneErrors.add(msg)
+        GlSupport.fail(item.frag, sceneErrors.joinToString("; "))
+    }
+
+    private fun drawScene(item: OverlayItem.Gl, spec: SceneSpec, state: SceneState, cam: SceneFrame, depth: Boolean) {
+        val r = scene3d ?: Scene3dRenderer(
+            readFile = { path -> GlTextureFiles.get(pluginOf(), path)?.let { it.load() } },
+            stampOf = { path -> GlTextureFiles.get(pluginOf(), path)?.stamp ?: -1 },
+            report = { msg -> sceneReport(msg) },
+            glVersion = { glVersion },
+            uintOk = { uintOk },
+            bindTexture = { tex, loc, unit -> prepared?.item?.let { texturePool.bindSpec(it, tex, loc, unit) } }
+        ).also { scene3d = it }
+        texturePool.sync(item)
+        r.draw(spec, state, cam, depth, item.blend)
     }
 
     private fun drawIndexed(m: GlMesh, type: Int, inst: Int) {

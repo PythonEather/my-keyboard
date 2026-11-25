@@ -376,7 +376,7 @@ has its own render thread and OpenGL context, so a slow shader or a busy script 
 
 | Field | Description |
 |---|---|
-| `frag` | **Required.** The fragment shader source (up to 64,000 characters). Starting it with `#version 300 es` selects GLSL ES 3.00 (needs a phone with OpenGL ES 3.0; the keyboard says so in the log if not). Otherwise it is GLSL ES 1.00 and `precision mediump float;` is added for you if you did not write any |
+| `frag` | **Required** (unless the layer has a `scene`, see **3D scenes** below). The fragment shader source (up to 64,000 characters). Starting it with `#version 300 es` selects GLSL ES 3.00 (needs a phone with OpenGL ES 3.0; the keyboard says so in the log if not). Otherwise it is GLSL ES 1.00 and `precision mediump float;` is added for you if you did not write any |
 | `vert` | Optional vertex shader. Without it a full-screen quad is drawn with the attribute `aPos` (−1..1) and the varying `vUv` (0..1), which is all a fragment-only effect needs. In an ES 3.00 shader the names are `in vec2 aPos` / `out vec2 vUv` |
 | `mesh` | Optional geometry for your own vertex shader (see below) |
 | `uniforms` | `{ name: value }`: a number, a boolean, an array of numbers (`vec2`..`vec4`, or a whole `float[]`) or a color `"#RRGGBB"` / `"#AARRGGBB"` (into `vec4`) |
@@ -390,6 +390,7 @@ has its own render thread and OpenGL context, so a slow shader or a busy script 
 | `textures` | `{ name: source }`: up to 4 pictures the shader reads as `uniform sampler2D name;` (see **Textures in GLSL layers** below). A source is a file name from the plugin's `.zip`, a `data:image/...;base64,` URI or the value of an `image` setting (`kb.config().photo`); `{ src, wrap, filter, mipmap }` sets how it is sampled |
 | `autoQuality` | The host lowers the resolution when frames are slow (step down 15% after ~10 slow frames, back up slowly when there is room) and lowers fps and resolution when the phone heats up (Android 10+: `THERMAL_STATUS_MODERATE` = max 30 fps and 85% resolution, `SEVERE` = 20 fps and 70%, `CRITICAL` = 12 fps and 50%). Default `true`; `false` draws exactly what you asked for |
 | `minScale` | The lowest resolution factor the governor may use for this layer, 0.1..1 (default 0.4). It multiplies `scale` |
+| `scene` | `{ models, camera, lights, objects, ... }`: the built-in 3D engine draws lit 3D objects and models after the shader, in the same depth buffer (see **3D scenes** below). Check with `kb.supports("scene3d")` |
 | `alpha`, `rotation` | Like any element |
 
 These uniforms are filled in by the keyboard if the shader declares them: `float iTime` (seconds), `float iFrame`, `vec3 iResolution`
@@ -500,10 +501,63 @@ mesh: {
   longer freeze the first frames. Updating the GPU driver or the system invalidates it by itself.
 - **`kb.glDebug(true)`** shows one line per GL layer over the keyboard: fps, frame time, resolution factor, heat level and the last shader error
   (`kb.glDebug(false)` hides it). The same numbers (plus shader cache hits) are in the mod's diagnostics.
-- `kb.supports("glFeedback")`, `kb.supports("glInstancing")`, `kb.supports("glDebug")`, `kb.supports("glQuality")`, `kb.supports("glTextures")` and `kb.supports("imageSettings")` are `true` in versions that have these.
+- `kb.supports("glFeedback")`, `kb.supports("glInstancing")`, `kb.supports("glDebug")`, `kb.supports("glQuality")`, `kb.supports("glTextures")`, `kb.supports("imageSettings")` and `kb.supports("scene3d")` are `true` in versions that have these.
 
 If the shader fails to compile or link, the reason goes to the mod's **Script log** and `kb.glError(fragSource)` returns it (or `null`).
 Reading the same uniform name in both stages with different precision is a common link error: declare it `highp` in both, or only in one stage.
+
+### 3D scenes (`scene`, built-in 3D engine)
+
+A `gl` element with a `scene` is drawn by the keyboard's own 3D engine: models, a camera, lights, materials and fog, with no shader code. The
+objects are drawn **after** the layer's shader into the **same framebuffer and depth buffer**, so a mesh and a raymarcher or raycaster can share
+depth (see below). A layer with a `scene` and no `frag` is a pure 3D layer (nothing is drawn behind the objects). The scene turns the depth
+buffer on by itself (`depth: false` turns it off). Check with `kb.supports("scene3d")`. Complete example: [`gl_scene.js`](app/src/main/assets/examples/gl_scene.js).
+
+```js
+kb.overlay([{ type: "gl", id: "demo", fps: 30,
+  scene: {
+    models: { ship: { src: "ship.glb", fit: 1.5, center: "base" } },     // files of the .zip; "cube" etc. need no file
+    camera: { pos: [0, 1.8, 4.5], target: [0, 0.4, 0], fov: 55 },
+    ambient: "#2a2e40",
+    fog: { color: "#0b0b14", density: 0.07 },
+    lights: [{ type: "sun", dir: [-0.4, -1, -0.3], intensity: 0.8 }, { type: "point", pos: [1, 2, 1], color: "#ff6a3d", range: 7 }],
+    objects: [
+      { id: "floor", model: "plane", scale: [12, 1, 12], material: { color: "#2a2f3a" } },
+      { id: "s", model: "ship", pos: [0, 0.5, 0], rot: [0, 30, 0] }
+    ]
+  } }]);
+kb.scene("demo", { camera: { yaw: 40 }, objects: { s: { pos: [1, 0.5, 0] } } });   // later: only what the patch names changes
+```
+
+The world is right-handed with **+Y up**. A camera with yaw 0 and pitch 0 looks toward **−Z**; positive yaw turns it to the left. Angles are in degrees.
+An object's rotation `[x, y, z]` is applied as Y · X · Z (yaw, pitch, roll). Sizes are in your own units.
+
+| Scene field | Description |
+|---|---|
+| `models` | `{ name: "cube" }` or `{ name: { src, rotate, center, fit, scale } }`, up to 16. A source is a built-in shape (`cube`, `plane`, `sphere`, `cylinder`, `quad`) or a file of the `.zip`: **`.obj`** (with its `.mtl`) or **`.glb` / `.gltf`** (with its `.bin` and pictures). Options: `rotate` `[x, y, z]` degrees applied to the model once (for models that are Z-up), `center` (`"center"` or `"base"`: move the model so its middle, or the middle of its underside, is at the origin), `fit` (scale the model so its largest side is this long) and `scale` (a factor, after `fit`). Up to 600,000 vertices and 16 MB per file |
+| `camera` | `pos` `[x, y, z]`, `yaw`, `pitch` (−89.9..89.9), `roll`, `fov` (5..170, vertical, default 60), `near` (0.05), `far` (200). `target: [x, y, z]` makes the camera look at that point (then `yaw` and `pitch` are ignored) |
+| `ambient` | The light that is everywhere: a color (default `"#333333"`) |
+| `lights` | Up to 8. `{ type: "sun", dir, color, intensity }` (a directional light; `dir` is the way the rays travel) or `{ type: "point", pos, color, intensity, range }` (`range` 0 = fades with distance squared; otherwise reaches zero at that distance) |
+| `fog` | `{ color, density }` (exponential; `null` = none) |
+| `objects` | A list of up to 256: `{ id, model, pos, rot, scale, visible, material }`. `scale` is `[x, y, z]` or one number. Without an `id` an object is called `o0`, `o1`, ... |
+
+`material` changes how an object looks; whatever it does not name comes from the model (an `.mtl` or glTF material, its color and picture):
+`color`, `emissive` (adds light-independent color), `specular` (0..4, the strength of the highlight) and `shininess` (1..512), `texture` (a picture of the
+`.zip`, a `data:image/...;base64,` URI or the value of an `image` setting; `""` removes the model's picture), `unlit` (no lighting at all, only color and
+picture), `doubleSided` and `alphaCut` (0..1: pixels with less alpha than this are not drawn, for leaves and fences). Lighting is per pixel (Blinn-Phong).
+
+**`kb.scene(id, patch)`** changes the scene of the `gl` layer with that `id` and returns `true` (`false` for an unknown layer). The patch holds only what changes:
+`camera` fields are merged one by one, `ambient`, `fog` and `lights` are replaced, and `objects` is either a map `id → fields` (an unknown id with a `model` adds an
+object, `null` removes one) or a list that replaces all objects. A new `kb.overlay` starts the scene again from its description. Moving a camera or an
+object this way does not rebuild anything, so it is cheap; call it from a timer or an event. Lua mods call `kb.scene` too.
+
+**Sharing depth with a shader.** The layer's own `frag` runs first. If it declares any of these uniforms the keyboard fills them with the scene's
+camera: `mat4 uViewProj`, `mat4 uInvViewProj`, `vec3 uCamPos`, `vec3 uCamForward`, `vec3 uCamRight`, `vec3 uCamUp` and `vec4 uCamParams` (`tan(fov/2)`, aspect, near,
+far). A raymarcher can then build the same ray as the engine's camera and write its hit distance to `gl_FragDepth` (GLSL ES 3.00: `#version 300 es`); with the depth
+value of a point `z` units in front of the camera `((far + near) / (far - near) - 2 * far * near / ((far - near) * z)) * 0.5 + 0.5`, objects hide behind walls and
+show in front of them. Errors (a model that did not load, a missing picture or file) go to the mod's **Script log** once and to `kb.glError`.
+
+Not in this version: skinned animation, shadows, bloom and other post effects, normal maps. Models are static; move or rotate objects from the mod.
 
 ### Installing and updating from a link
 In the plugin settings, **Install from a link** takes an https address of a plugin file (`.js`, `.json` or a `.zip` with media). A GitHub page

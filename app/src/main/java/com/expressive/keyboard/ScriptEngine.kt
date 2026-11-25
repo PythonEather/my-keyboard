@@ -646,21 +646,55 @@ object ScriptHost {
         }
     }
 
+    /** Pictures a scene's objects name (at the start and after every kb.scene): made known to the GL thread; a missing one is written to the log once. */
+    private fun registerSceneTextures(m: Mod, sources: Collection<String>) {
+        val ctx = appContext ?: return
+        for (src in SceneFiles.named(sources)) {
+            if (GlTextureFiles.register(ctx, m.plugin, src)) continue
+            if (texWarned.size > 64) texWarned.clear()
+            if (texWarned.add(m.plugin.id + "/" + src)) {
+                val what = if (GlTextures.userOption(src) != null) "no picture chosen for that setting (or it is not an image setting of this plugin)" else "no file \"$src\" in the plugin's .zip"
+                log(m.plugin.id, "✕ scene: texture: $what")
+            }
+        }
+    }
+
+    /** Makes the models, .mtl/.bin files and pictures of the plugin known to the GL thread, which loads a model the first time the layer is drawn. */
+    private fun registerScene(m: Mod, g: OverlayItem.Gl, spec: SceneSpec) {
+        val ctx = appContext ?: return
+        for (f in SceneFiles.readable(m.plugin.files.keys)) GlTextureFiles.register(ctx, m.plugin, f)
+        for (f in SceneFiles.missingModels(spec, m.plugin.files.keys)) {
+            if (texWarned.size > 64) texWarned.clear()
+            if (texWarned.add(m.plugin.id + "/" + f)) log(m.plugin.id, "✕ scene: no model file \"$f\" in the plugin's .zip (model files need a .zip plugin; built-in shapes need nothing)")
+        }
+        registerSceneTextures(m, spec.initial.textureSources())
+        if (g.id == null && texWarned.add(m.plugin.id + "/scene-without-id")) log(m.plugin.id, "scene: this layer has no id, so kb.scene cannot change it")
+    }
+
     private fun parseItems(m: Mod, raw: Any?): List<OverlayItem> {
         val list = raw as? List<*> ?: listOfNotNull(raw)
         return list.take(4000).mapNotNull { v ->
             OverlayItem.parse(v)?.let { parsed ->
                 if (parsed is OverlayItem.Gl) {
-                    val g = parsed.copy(pluginId = m.plugin.id)
-                    // новый kb.overlay задаёт uniform заново: прежние kb.glUniforms больше не действуют
-                    g.liveKey?.let { k -> GlSupport.dropLive(k) }
+                    val withPlugin = parsed.copy(pluginId = m.plugin.id)
+                    // a scene layer with no shader of its own: the stand-in is made unique, so that errors and logs are told apart
+                    val g = if (withPlugin.scene != null && SceneHost.isDefaultBackground(withPlugin.frag)) {
+                        withPlugin.copy(frag = SceneHost.BACKGROUND_FRAG + "// " + m.plugin.id + "/" + (withPlugin.id ?: "") + "\n")
+                    } else withPlugin
+                    val scene = g.scene
+                    // новый kb.overlay задаёт uniform заново: прежние kb.glUniforms больше не действуют (и сцена начинается сначала)
+                    g.liveKey?.let { k ->
+                        GlSupport.dropLive(k)
+                        if (scene != null) GlSupport.resetScene(k, scene) else GlSupport.dropScene(k)
+                    }
                     watchGl(m.plugin.id, g.frag)
                     registerGlTextures(m, g)
+                    if (scene != null) registerScene(m, g, scene)
                     g
                 } else if (parsed is OverlayItem.Group) parsed.copy(pluginId = m.plugin.id) else parsed
             } ?: null.also {
                 val o = v as? Map<*, *>
-                if (o?.get("type") == "gl") log(m.plugin.id, "✕ gl: frag is required (the fragment shader source)")
+                if (o?.get("type") == "gl") log(m.plugin.id, "✕ gl: frag is required (the fragment shader source), unless the layer has a scene: { ... }")
                 if (o?.get("type") == "batch") log(m.plugin.id, "✕ batch: needs shapes (rect, circle, oval or line elements) or the key of a batch sent before")
                 if (o?.get("type") == "group") log(m.plugin.id, "✕ group: key is required (the name given to kb.defineGroup)")
                 if (o?.get("type") == "shader") {
@@ -1415,10 +1449,19 @@ object ScriptHost {
             GlSupport.putUniforms(GlSupport.liveKey(id, gid), patch.entries.associate { it.key.toString() to it.value })
             true
         }
+        // changes the 3D scene of the gl layer with this id (scene: { ... } in the element), see PLUGINS.md "3D scenes": the renderer picks the change up on its next frame
+        def(kb, "scene") { a ->
+            val gid = str(a, 0)
+            val patch = fromJs(a.getOrNull(1)) as? Map<*, *>
+            if (gid.isEmpty() || patch == null) return@def false
+            val named = GlSupport.patchScene(GlSupport.liveKey(id, gid), patch) ?: return@def false
+            registerSceneTextures(m, named)
+            true
+        }
         def(kb, "supports") { a ->
             when (str(a, 0)) {
                 "shader", "postEffect" -> ModShaders.supported
-                "gl", "batch", "groups", "panZoom", "glFeedback", "glInstancing", "glDebug", "glQuality", "glTextures", "imageSettings" -> true
+                "gl", "batch", "groups", "panZoom", "glFeedback", "glInstancing", "glDebug", "glQuality", "glTextures", "imageSettings", "scene3d" -> true
                 "labelBlur" -> android.os.Build.VERSION.SDK_INT >= 31
                 "particles", "keyEffects", "pointer" -> true
                 "sensors" -> ModSensors.available(ctx)

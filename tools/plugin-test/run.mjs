@@ -242,6 +242,8 @@ function withVersion(src, es3) {
 }
 
 function validateGl(file, label, item, glslang) {
+  // a layer with a `scene: { ... }` needs no shader of its own: the app draws only the 3D objects
+  if ((item.frag === undefined || item.frag === null || item.frag === "") && item.scene && typeof item.scene === "object") return;
   if (!item.frag || typeof item.frag !== "string") { fail(file, `${label}: gl item without a "frag" string`); return; }
   if (item.frag.length > 64000) fail(file, `${label}: shader is larger than 64000 characters (the app refuses it)`);
   const { fragSrc, vertSrc, es3 } = prepareShaders(item);

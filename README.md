@@ -14,6 +14,7 @@
 - **Picture settings for mods** (`"type": "image"`): the person using a mod picks a picture from the gallery in the mod's settings and the mod gives it to a shader as a texture (`kb.config().photo`); the picture stays in the app's own storage and only that mod can read it
 - **Image textures in GLSL layers** (`textures: { iTex0: "brick.png" }`): pictures from the `.zip` (or `data:` URIs) as `sampler2D` uniforms, for textured 3D, sprites, noise and lookup-table colour effects; repeat, mirror, nearest and mipmaps (see `gl_textures.js`)
 - Mod API additions: retained groups, host-side pan/zoom, GL shape batches
+- **Built-in 3D engine** (`scene: { ... }` in a `gl` layer, `kb.scene` to change it): load `.obj` and `.glb` / `.gltf` models or use built-in shapes, a camera, point and sun lights, materials, fog, and objects that **share the depth buffer** with the layer's own shader; example `gl_scene.js`
 - **Lua 5.4 as a third script engine**: write a mod as a `.lua` file (manifest in a `--[=[ @plugin { … } ]=]` comment) with the same `kb.*` API, a sandbox and the same time limits; example `hello.lua`
 - Faster GL layer and QuickJS (idle frames skipped, uniform caching, 32-bit mesh indices)
 - Music and other big files in a `.zip` mod: up to 256 MB, kept on disk and played straight from there
