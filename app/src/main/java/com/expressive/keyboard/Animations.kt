@@ -652,7 +652,7 @@ private fun TransitionPreview(a: TransitionAnim, speed: Float, withExit: Boolean
             Modifier.fillMaxWidth().height(84.dp).clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainerHigh),
             contentAlignment = Alignment.Center
         ) {
-            AnimatedVisibility(shown, enter = Transitions.enter(a, speed), exit = Transitions.exit(a, speed)) {
+            androidx.compose.animation.AnimatedVisibility(shown, enter = Transitions.enter(a, speed), exit = Transitions.exit(a, speed)) {
                 Box(
                     Modifier.width(200.dp).height(52.dp).clip(RoundedCornerShape(14.dp)).background(cs.primary),
                     contentAlignment = Alignment.Center
