@@ -18,7 +18,8 @@ so a stuck mod cannot freeze the keyboard. The limit is per call, not per frame:
 
 Scripts run on Rhino by default. To pick QuickJS for a particular mod, add
 `"scriptEngine": "quickjs"` to its manifest. The field works for `.json`, for the `@plugin` comment in `.js`
-and for the manifest inside a `.zip`. Both engines share the same `kb.*` API and can run at the same time.
+and for the manifest inside a `.zip`. A mod can also be written in Lua 5.4 (`"scriptEngine": "lua"`, or a `.lua` file, see *Mods in Lua*).
+All engines share the same `kb.*` API and can run at the same time.
 
 Built-in examples: the mods Notes, Calculator, Smart quotes «», Studio (piano, drawing on the keyboard, an input field, text-to-speech, its own settings; `.js`) and Effects (particles, liquid, a shader, tilt, settings tabs and presets; `.js`), and the skins Liquid Glass, Neon and
 Neumorphism (`app/src/main/assets/plugins/`). Templates: **Save mod example (.js)** and **Save plugin example**.
@@ -43,7 +44,7 @@ Plugins here are not limited to a few buttons, to Android 13+ shaders or to a 30
 | **Retained groups, pan and zoom** | Send a big scene once, move the camera inside the keyboard with no script round trip | 8+ |
 | **Particles and liquid** | Up to 20,000 particles, up to 3,000 liquid ones, driven by the keyboard, not the script | 8+ |
 | **Own screen** | Fullscreen, landscape (`landscape`, `landscape-right`) or a floating panel for a mod: games, maps, tools | 8+ |
-| **Two script engines** | Rhino (default) or QuickJS (`"scriptEngine": "quickjs"`), same `kb.*` API, may run side by side | 8+ |
+| **Three script engines** | Rhino (default), QuickJS (`"scriptEngine": "quickjs"`) or Lua 5.4 (`"scriptEngine": "lua"`, a `.lua` file), same `kb.*` API, may run side by side | 8+ |
 | **Sensors, microphone, app, media** | Tilt, gyro, microphone level and bands, the app being typed in, now playing and player controls (each needs a permission) | 8+ |
 | **Settings, themes, skins** | Plugins can add skins, themes, layouts, icons, languages, dictionaries, arrange the Settings home screen (`settings_layout`) and the keyboard toolbar (`toolbar_layout`) | 8+ |
 | **Dynamic shadow, static frosted glass** | Shadows that lean with the phone tilt, a background blurred once | 8+ |
@@ -69,7 +70,7 @@ Three things people often get wrong:
 | `permissions` | no | `network` — internet, `read_text` — read the typed text, `clipboard` — read the clipboard, `launch` — open links, apps and "Share", `ai` — AI requests with the user's key, `sensors` — tilt and rotation of the phone, `microphone` — volume and frequencies from the microphone, `app_info` — which app is being typed in, `screen` — show the mod's own screen (fullscreen, landscape or a floating panel), `media` — what is playing and the player controls, `settings_layout` — arrange the Settings home screen, `toolbar_layout` — arrange the keyboard toolbar |
 | `config` | no | The mod's own settings — they appear in its card (see "Mod settings") |
 | `script` | no | The mod's JavaScript (a string or an array of strings) |
-| `scriptEngine` | no | `rhino` (default) or `quickjs` |
+| `scriptEngine` | no | `rhino` (default), `quickjs` or `lua` |
 | `callBudgetMs` | no | How many ms one script call gets: 300 (default) … 2000. Needed by heavy mods (3D, big meshes). Time spent inside `kb.*` functions (for example parsing a mesh in `kb.overlay`) does not count toward the limit (Rhino) |
 | `display` | no | The mod's own screen: `fullscreen`, `landscape`, `landscape-right` or `floating` (see "The mod's own screen") |
 | `enabledByDefault` | no | `false` — a built-in plugin appears turned off |
@@ -572,6 +573,31 @@ The sandbox has `Promise` and `.then()`; `async`/`await` and default parameters 
 ```js
 kb.fetch("https://api.github.com/zen").then(function (r) { kb.commit(r.text); }, function (e) { kb.toast(e.message); });
 ```
+
+## Mods in Lua
+
+A mod can be written in Lua 5.4 instead of JavaScript. Save it as a `.lua` file and start it with the manifest in a Lua long comment:
+
+```lua
+--[=[ @plugin
+{ "id": "my.lua.mod", "name": "My Lua mod", "permissions": ["read_text"] }
+]=]
+kb.on("word", function(e) kb.toast("a word was typed") end)
+```
+
+The comment is the same plugin JSON as in a `.js` mod and the engine is set by the comment itself. Inside a `.zip` use `"scriptEngine": "lua"` and `"main": "main.lua"`.
+The example `hello.lua` is in `app/src/main/assets/examples/`.
+
+The `kb.*` functions, events, permissions and time limits are the same as for JavaScript mods. What is different:
+
+- **Tables** are both objects and lists. A table with keys `1..n` and nothing else becomes a list, any other table an object (an empty table is a list). Lists start at 1.
+- **`nil`** is both `null` and `undefined`. Callbacks are plain functions: `kb.on("word", function(e) ... end)`.
+- **No promises.** `kb.fetch`, `kb.ask`, `kb.translateAsync`, `kb.input`, `kb.sleep` and `kb.saves` exist only for JavaScript. Use the callback forms: `kb.http(opts, function(err, res) ... end)`, `kb.ai`, `kb.translate`, `kb.prompt`, `setTimeout`.
+- **`kb.json.encode(value)` and `kb.json.decode(text)`** for JSON. `kb.storage.get(key, fallback)` and `kb.storage.set(key, value)` keep Lua values.
+- **`print(...)`** and `console.log(...)` write to the Script log.
+- **`require("lib.maze")`** (or `require("lib/maze.lua")`) loads another `.lua` file from the mod's `.zip`; the result is cached.
+- **Sandbox.** The standard libraries `base`, `coroutine`, `table`, `string`, `utf8` and `math` are there. `io`, `os`, `debug`, `package`, `dofile`, `loadfile`, `collectgarbage` and `string.dump` are removed, and `load` reads text only. A script gets 64 MB of memory, and a script that runs past its time limit is stopped even if it wraps the loop in `pcall`.
+- Lua mods are not covered by the `tools/plugin-test` check (it runs JavaScript in Node).
 
 ## Sound, vibration, voice
 

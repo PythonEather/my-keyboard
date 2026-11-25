@@ -206,10 +206,14 @@ internal fun PluginsPage(settings: KeyboardSettings) {
     }
     val exportJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? -> writeExport(uri, false) }
     val exportScriptLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/javascript")) { uri: Uri? -> writeExport(uri, true) }
+    // octet-stream: with a text type the file picker would add its own extension to the .lua name
+    val exportLuaLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? -> writeExport(uri, true) }
     fun fileStem(p: KeyboardPlugin) = p.id.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "plugin" }
     val startExport: (KeyboardPlugin, Boolean) -> Unit = { p, asScript ->
         exporting = p
-        if (asScript) exportScriptLauncher.launch(fileStem(p) + ".js") else exportJsonLauncher.launch(fileStem(p) + ".json")
+        if (asScript) {
+            if (p.scriptEngine == PluginScriptEngine.LUA) exportLuaLauncher.launch(fileStem(p) + ".lua") else exportScriptLauncher.launch(fileStem(p) + ".js")
+        } else exportJsonLauncher.launch(fileStem(p) + ".json")
     }
 
     InfoCard(

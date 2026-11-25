@@ -527,11 +527,12 @@ object ScriptHost {
                 when (p.scriptEngine) {
                     PluginScriptEngine.RHINO -> RhinoPluginRuntime()
                     PluginScriptEngine.QUICKJS -> QuickJsPluginRuntime(context.assets)
+                    PluginScriptEngine.LUA -> LuaPluginRuntime(context.assets)
                 }
             }.onFailure { log(p.id, "✕ " + describe(it)) }.getOrNull() ?: continue
             m.runtime = runtime
             exec(m, LOAD_BUDGET_MS, "load") {
-                runtime.load(bindings(m), PRELUDE + "\n" + preludeExtra(context), src, p.id + ".js")
+                runtime.load(bindings(m), PRELUDE + "\n" + preludeExtra(context), src, p.id + (if (p.scriptEngine == PluginScriptEngine.LUA) ".lua" else ".js"))
             }.onSuccess {
                 next[p.id] = m
                 log(p.id, "✓ loaded in " + (SystemClock.uptimeMillis() - started) + " ms")

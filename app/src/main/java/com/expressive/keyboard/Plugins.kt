@@ -286,7 +286,7 @@ data class PluginTheme(
     val colors: Map<String, Int> = emptyMap()
 )
 
-enum class PluginScriptEngine { RHINO, QUICKJS }
+enum class PluginScriptEngine { RHINO, QUICKJS, LUA }
 
 @Immutable
 data class KeyboardPlugin(
@@ -532,7 +532,8 @@ object PluginParser {
         val scriptEngine = when (o.optString("scriptEngine", "rhino")) {
             "rhino" -> PluginScriptEngine.RHINO
             "quickjs" -> PluginScriptEngine.QUICKJS
-            else -> throw IllegalArgumentException("scriptEngine: expected rhino or quickjs")
+            "lua" -> PluginScriptEngine.LUA
+            else -> throw IllegalArgumentException("scriptEngine: expected rhino, quickjs or lua")
         }
         val callBudget = o.optInt("callBudgetMs", 300).coerceIn(300, 2000)
         val display = o.optString("display", "").trim()
@@ -636,6 +637,8 @@ object PluginParser {
     }
 
     private val JS_MANIFEST = Regex("/\\*\\s*@plugin\\s*([\\s\\S]*?)\\*/")
+    /** The manifest of a Lua mod: `--[=[ @plugin { … } ]=]` (any number of `=`, so a `]]` inside the JSON is fine). */
+    private val LUA_MANIFEST = Regex("^\\s*--\\[(=*)\\[\\s*@plugin\\s*([\\s\\S]*?)\\]\\1\\]")
 
     /**
      * Мод одним файлом .js: манифест — JSON в комментарии в начале файла.
@@ -645,7 +648,13 @@ object PluginParser {
      * ```
      */
     fun jsToJson(source: String): String {
-        val m = JS_MANIFEST.find(source) ?: throw IllegalArgumentException("A .js mod must start with a comment like /* @plugin { \"id\": …, \"name\": … } */")
+        LUA_MANIFEST.find(source)?.let { lua ->
+            val o = JSONObject(lua.groupValues[2].trim())
+            o.put("scriptEngine", "lua")
+            o.put("script", source)
+            return o.toString()
+        }
+        val m = JS_MANIFEST.find(source) ?: throw IllegalArgumentException("A .js mod must start with a comment like /* @plugin { \"id\": …, \"name\": … } */ (a .lua mod: --[=[ @plugin { … } ]=])")
         val o = JSONObject(m.groupValues[1].trim())
         o.put("script", source)
         return o.toString()
@@ -1296,7 +1305,7 @@ object PluginRepository {
         reload(app)
     }
 
-    private val SCRIPT_HEAD = Regex("^\\s*/\\*\\s*@plugin")
+    private val SCRIPT_HEAD = Regex("^\\s*(?:/\\*|--\\[=*\\[)\\s*@plugin")
 
     /**
      * The plugin exactly as it is stored: the installed JSON for imported plugins (scripts and zip files included),
@@ -1328,7 +1337,8 @@ object PluginRepository {
         val manifest = runCatching {
             JSONObject(stored).apply { remove("script"); remove("files"); remove("main") }.toString(2)
         }.getOrNull() ?: return script
-        return "/* @plugin " + manifest + " */\n" + script
+        return if (p.scriptEngine == PluginScriptEngine.LUA) "--[=[ @plugin " + manifest + " ]=]\n" + script
+        else "/* @plugin " + manifest + " */\n" + script
     }
 
     fun applyTheme(context: Context, t: PluginTheme) {

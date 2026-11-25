@@ -2,6 +2,13 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.18
+- Lua 5.4 as a third script engine next to Rhino and QuickJS: a mod can be a `.lua` file with its manifest in a `--[=[ @plugin { … } ]=]` comment (or `"scriptEngine": "lua"` in a `.json` or `.zip`)
+- Same `kb.*` API, permissions and call limits; tables stand for objects and lists, `kb.json`, `kb.storage`, `print` and `require` are built in
+- Sandbox: no `io`, `os`, `debug`, `package` or file loading, text chunks only, 64 MB of memory, and a script that runs too long is stopped even inside `pcall`
+- Exporting a Lua mod saves a `.lua` file; new example plugin `hello.lua`
+- `PLUGINS.md` and `README.md` updated
+
 ## 11.2.17
 - Fix: a picture chosen in a mod's image setting was always refused with "The picture could not be read" (the size check treated its normal empty answer as a failure)
 
