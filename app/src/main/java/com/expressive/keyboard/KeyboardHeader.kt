@@ -193,17 +193,30 @@ internal fun HeaderBar(
         horizontalArrangement = Arrangement.spacedBy(if (sideHidden) 0.dp else 6.dp)
     ) {
         // кнопку панели функций можно убрать; «назад» в панелях остаётся всегда
-        if ((panel != ActivePanel.KEYBOARD || settings.toolsButton) && !sideHidden) headerButton({ actions.headerMenu() }, {
-            // удержание на клавиатуре: по настройке — панель функций строкой над подсказками или панель редактирования
-            if (panel == ActivePanel.KEYBOARD) {
-                if (settings.toolsLongPress == "EDIT_BAR") KeyboardPrefs.edit(context) { putBoolean("edit_bar", !settings.editBar) }
-                else KeyboardPrefs.edit(context) { putBoolean("pinned_tools", !settings.pinnedTools) }
+        if ((panel != ActivePanel.KEYBOARD || settings.toolsButton) && !sideHidden) Box(contentAlignment = Alignment.Center) {
+            headerButton({ actions.headerMenu() }, {
+                // удержание на клавиатуре: по настройке — панель функций строкой над подсказками или панель редактирования
+                if (panel == ActivePanel.KEYBOARD) {
+                    if (settings.toolsLongPress == "EDIT_BAR") KeyboardPrefs.edit(context) { putBoolean("edit_bar", !settings.editBar) }
+                    else KeyboardPrefs.edit(context) { putBoolean("pinned_tools", !settings.pinnedTools) }
+                }
+            }) {
+                if (panel != ActivePanel.KEYBOARD) {
+                    SlotIcon("back", btnFg, 22.dp) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, tint = btnFg, modifier = Modifier.size(22.dp)) }
+                } else {
+                    SlotIcon("menu", btnFg, 22.dp) { GlyphIcon(Glyph.GRID, btnFg, 22.dp) }
+                }
             }
-        }) {
-            if (panel != ActivePanel.KEYBOARD) {
-                SlotIcon("back", btnFg, 22.dp) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, tint = btnFg, modifier = Modifier.size(22.dp)) }
-            } else {
-                SlotIcon("menu", btnFg, 22.dp) { GlyphIcon(Glyph.GRID, btnFg, 22.dp) }
+            // значок инкогнито: включён в клавиатуре или приложение (вкладка инкогнито) просит ничего не запоминать
+            if (panel == ActivePanel.KEYBOARD && (settings.incognito || state.fieldIncognito)) {
+                Box(
+                    Modifier.align(Alignment.TopEnd).size(18.dp).clip(CircleShape).background(palette.accentSoft),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SlotIcon("incognito", palette.onAccentSoft, 12.dp) {
+                        Icon(Icons.Rounded.VisibilityOff, null, tint = palette.onAccentSoft, modifier = Modifier.size(12.dp))
+                    }
+                }
             }
         }
         val hideOnSwipe = settings.swipeDownHide && panel == ActivePanel.KEYBOARD

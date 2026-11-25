@@ -600,6 +600,25 @@ internal fun KeyboardScreen(
     val popup = remember { PopupController() }
     val glide = remember { GlideController() }
     val layer = remember { CoordsHolder() }
+    val panelTr = remember(settings.animPanel, settings.animPanelCfg) { Transitions.panel(settings) }
+    // появление клавиатуры при открытии окна: прогресс 0 → 1, играет заново на каждый показ
+    val openTr = remember(settings.animOpen, settings.animOpenCfg) { Transitions.open(settings) }
+    val openCur by rememberUpdatedState(openTr)
+    val openSpeed by rememberUpdatedState(settings.animSpeed)
+    val openProgress = remember { Animatable(1f) }
+    var openPlayed by remember { mutableIntStateOf(0) }
+    LaunchedEffect(state.showTick) {
+        val tr = openCur
+        openPlayed = state.showTick
+        if (state.showTick == 0 || tr.style == "NONE") {
+            openProgress.snapTo(1f)
+            return@LaunchedEffect
+        }
+        openProgress.snapTo(0f)
+        val k = openSpeed
+        if (tr.style == "FADE") openProgress.animateTo(1f, tween((tr.enterMs / k).toInt()))
+        else openProgress.animateTo(1f, spring(dampingRatio = tr.damping, stiffness = tr.stiffness * k * k))
+    }
     val spec = remember(settings.shapePreset, settings.waveCount, settings.waveAmplitudePercent, settings.shapeAmount) { settings.accentSpec().accent(settings) }
     val panel = state.panel
     val lang = remember(state.language, settings.langLayouts, Languages.extra) {
@@ -632,6 +651,22 @@ internal fun KeyboardScreen(
     Box(
         (if (fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).onGloballyPositioned { layer.coords = it }
             .then(if (ModFx.wantsPointer) Modifier.modPointerWatch() else Modifier)
+            .then(
+                if (openTr.style == "NONE") Modifier else Modifier.graphicsLayer {
+                    // пока эффект не начался, но окно уже показалось, держим клавиатуру на нуле: без вспышки целиком
+                    val p = if (state.showTick != openPlayed) 0f else openProgress.value
+                    alpha = p.coerceIn(0f, 1f)
+                    when (openTr.style) {
+                        "SCALE" -> {
+                            val sc = openTr.scaleFrom + (1f - openTr.scaleFrom) * p
+                            scaleX = sc
+                            scaleY = sc
+                            transformOrigin = TransformOrigin(0.5f, 1f)
+                        }
+                        "SLIDE" -> translationY = (1f - p) * openTr.slideIn * size.height
+                    }
+                }
+            )
     ) {
         // слой мода под клавишами — первым, чтобы клавиши легли поверх
         ScriptBackgroundLayer()
@@ -669,22 +704,14 @@ internal fun KeyboardScreen(
                     panel == ActivePanel.AI_WRITE || panel == ActivePanel.AI_PROMPT || panel == ActivePanel.SCRIPT_INPUT) {
                     ActivePanel.KEYBOARD
                 } else panel
-                if (settings.panelAnimations && settings.animPanel != "NONE") {
+                if (settings.panelAnimations && panelTr.style != "NONE") {
                     val k = settings.animSpeed
-                    val style = settings.animPanel
                     AnimatedContent(
                         targetState = body,
                         transitionSpec = {
-                            val fadeMs = (160 / k).toInt()
                             // панель сменилась, пока клавиатура была скрыта: при появлении — сразу, без проявления
-                            when {
-                                state.instantUi -> EnterTransition.None togetherWith ExitTransition.None
-                                style == "SLIDE" -> (slideInVertically(spring(dampingRatio = 0.85f, stiffness = 600f * k * k)) { it / 5 } + fadeIn(tween(fadeMs))) togetherWith
-                                    (slideOutVertically(spring(dampingRatio = 1f, stiffness = 900f * k * k)) { -it / 8 } + fadeOut(tween((100 / k).toInt())))
-                                style == "FADE" -> fadeIn(tween(fadeMs)) togetherWith fadeOut(tween((110 / k).toInt()))
-                                else -> (fadeIn(tween(fadeMs)) + scaleIn(spring(dampingRatio = 0.75f, stiffness = 500f * k * k), initialScale = 0.94f)) togetherWith
-                                    fadeOut(tween((100 / k).toInt()))
-                            }
+                            if (state.instantUi) EnterTransition.None togetherWith ExitTransition.None
+                            else Transitions.spec(panelTr, k)
                         },
                         label = "body"
                     ) { target -> PanelBody(target, state, lang, actions, voice, settings, palette, font, spec, popup, layer, glide) }
@@ -838,7 +865,7 @@ internal fun KeyGrid(
                     KeyView(
                         key = key,
                         label = when {
-                            key.type == KeyType.SPACE && settings.incognito -> "🕶 ${key.label}"
+                            key.type == KeyType.SPACE && (settings.incognito || state.fieldIncognito) -> "🕶 ${key.label}"
                             key.type == KeyType.GLOBE -> lang.label
                             isChar -> key.shownLabel(upper)
                             else -> key.label

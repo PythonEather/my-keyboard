@@ -209,6 +209,10 @@ class KeyboardState {
     val pinnedClips = mutableStateListOf<String>()
     /** Окно клавиатуры только что появилось: панели и строка подсказок встают на место без анимаций. */
     var instantUi by mutableStateOf(false)
+    /** Приложение просит не запоминать набранное (вкладка инкогнито в браузере): значок и ничего не учится. */
+    var fieldIncognito by mutableStateOf(false)
+    /** Растёт при каждом появлении окна клавиатуры: по нему играет анимация открытия. */
+    var showTick by mutableIntStateOf(0)
 }
 
 @Stable

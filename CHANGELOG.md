@@ -2,6 +2,13 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.21
+- Fix: swipe typing no longer leaves the first key stretched and pressed (with its popup) for the whole swipe; the key is released as soon as the swipe starts
+- Incognito: the keyboard now honors the app's own "no personalized learning" flag (private tabs in browsers): nothing is learned, mods see no text, system spellcheck stays off, and the incognito icon shows on the menu button and the space bar. The manual incognito toggle shows the same icon
+- Animation packs (file version 2): export and import now carry your custom press animations plus the chosen press and popup animation, speed, panel transition and keyboard-open animation. Version 1 files still import
+- Panel transitions are customizable (style, fade times, start size, slide distance, spring) with a live preview; the presets keep their old look
+- New: keyboard opening animation (fade, grow or slide from below), off by default; plays each time the keyboard appears
+
 ## 11.2.20
 - Built-in 3D engine: a `gl` layer can have `scene: { models, camera, lights, objects, ambient, fog }` and the keyboard draws it with its own lit renderer, with no shader code (a layer with a scene needs no `frag`)
 - Models: `.obj` (with `.mtl`) and `.glb` / `.gltf` from a `.zip` mod, plus built-in shapes `cube`, `plane`, `sphere`, `cylinder`, `quad`; per-object `pos`, `rot`, `scale`, `visible` and `material` (color, emissive, specular, shininess, texture, unlit, doubleSided, alphaCut)

@@ -157,7 +157,9 @@ internal data class FieldFlags(
     val isPassword: Boolean = false,
     val suggestions: Boolean = true,
     val autoCorrect: Boolean = true,
-    val autoCap: Boolean = false
+    val autoCap: Boolean = false,
+    /** Приложение просит не запоминать набранное (вкладка инкогнито в браузере: IME_FLAG_NO_PERSONALIZED_LEARNING). */
+    val noLearning: Boolean = false
 )
 
 /** Подсказка «↶ …»: вернуть только что стёртый кусок текста. */
@@ -743,6 +745,7 @@ class ComposeKeyboardService : InputMethodService(),
 
     override fun onWindowShown() {
         super.onWindowShown()
+        kb.showTick++
         moveLifecycle(Lifecycle.State.RESUMED)
         voice.refreshPermission()
         syncClipboard()
@@ -940,9 +943,13 @@ class ComposeKeyboardService : InputMethodService(),
             // многие приложения ставят «без подсказок» в обычные поля сообщений — из-за этого исправления
             // работали лишь в части приложений; по настройке исправляем везде, кроме паролей, почты и адресов
             autoCorrect = suggestions && (!noSuggest || settings.correctEverywhere),
-            autoCap = text && !password && !addressLike && (type and capFlags) != 0
+            autoCap = text && !password && !addressLike && (type and capFlags) != 0,
+            noLearning = (info.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0
         )
     }
+
+    /** Ничего не запоминать: инкогнито в самой клавиатуре или в поле приложения (вкладка инкогнито). */
+    private val privateNow: Boolean get() = settings.incognito || flags.noLearning
 
     /** Поле ввода, чтобы отличить перезапуск окна в том же поле от перехода в новое. */
     private fun fieldKey(info: EditorInfo?): String =
@@ -955,8 +962,9 @@ class ComposeKeyboardService : InputMethodService(),
         touchesFor = ""
         inputGeneration++
         flags = computeFlags(info)
+        kb.fieldIncognito = flags.noLearning
         // в поле пароля и в инкогнито моды не видят ни набираемого текста, ни буфера
-        ScriptHost.privateMode = flags.isPassword || settings.incognito
+        ScriptHost.privateMode = flags.isPassword || settings.incognito || flags.noLearning
         kb.glideAllowed = flags.suggestions
         glideWord = false
         tokenHasSymbol = true
@@ -1210,7 +1218,7 @@ class ComposeKeyboardService : InputMethodService(),
     /** Системная проверка правописания: не для паролей, инкогнито и письменностей без пробелов или со сборкой слогов. */
     private fun systemSpellAllowed(): Boolean {
         val s = settings
-        return s.systemSpellcheck && !s.incognito && flags.suggestions && !flags.isPassword &&
+        return s.systemSpellcheck && !s.incognito && !flags.noLearning && flags.suggestions && !flags.isPassword &&
             kb.language.autoCorrect && kb.language.composer == Composer.NONE
     }
 
@@ -1431,8 +1439,8 @@ class ComposeKeyboardService : InputMethodService(),
     private fun learn(previous: String, word: String, boost: Int = 1) {
         // латиница пиньиня/ромадзи — не слова языка
         if (Cjk.isCjk(kb.language.composer)) return
-        if (!flags.isPassword && flags.suggestions && !settings.incognito) WordPredictorEngine.learn(kb.language, previous, word, boost)
-        if (ScriptHost.has("word") && !flags.isPassword && !settings.incognito) ScriptHost.emit("word", mapOf("word" to word, "previous" to previous))
+        if (!flags.isPassword && flags.suggestions && !privateNow) WordPredictorEngine.learn(kb.language, previous, word, boost)
+        if (ScriptHost.has("word") && !flags.isPassword && !privateNow) ScriptHost.emit("word", mapOf("word" to word, "previous" to previous))
     }
 
     // ------------------------------------------------------------------ корейский и Telex
@@ -1631,7 +1639,7 @@ class ComposeKeyboardService : InputMethodService(),
         cjk = emptyList()
         cjkFor = ""
         // запомнить выбор: и кусок, и всю фразу, если её собирали по частям
-        if (!flags.isPassword && !settings.incognito) {
+        if (!flags.isPassword && !privateNow) {
             val lang = kb.language
             val usedRaw = raw.substring(0, minOf(raw.length, raw.length - rest.length))
             if (c.text != raw) CjkUser.learn(lang, usedRaw.trimEnd('\''), c.text)
@@ -2104,7 +2112,7 @@ class ComposeKeyboardService : InputMethodService(),
             ScriptHost.emit("press", mapOf("label" to KeyboardGeometry.nameOf(key), "type" to key.type.name.lowercase()))
         }
         // "typing": скорость набора и стирания без самих букв (для мода, который реагирует на темп печати)
-        if (ScriptHost.has("typing") && !flags.isPassword && !settings.incognito) {
+        if (ScriptHost.has("typing") && !flags.isPassword && !privateNow) {
             val kind = when (key.type) {
                 KeyType.SPACE -> "space"
                 KeyType.ENTER -> "enter"

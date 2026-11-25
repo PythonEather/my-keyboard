@@ -289,6 +289,12 @@ data class KeyboardSettings(
     val animPanel: String = "SCALE",
     /** Свои анимации нажатия (JSON-массив). */
     val customAnims: String = "",
+    /** Своя настройка перехода панелей (JSON); пусто — готовый вариант из animPanel. */
+    val animPanelCfg: String = "",
+    /** Появление клавиатуры при открытии: NONE | FADE | SCALE | SLIDE. */
+    val animOpen: String = "NONE",
+    /** Своя настройка появления клавиатуры (JSON); пусто — готовый вариант из animOpen. */
+    val animOpenCfg: String = "",
     // --- ввод ---
     val spaceSwipe: String = "CURSOR",            // CURSOR | LANGUAGE | OFF
     /** Удержание кнопки языка: LANGUAGES | SYSTEM | EMOJI | CLIPBOARD | VOICE | SETTINGS | ONE_HANDED | OFF */
@@ -639,6 +645,9 @@ object KeyboardPrefs {
             animPopup = p.getString("anim_popup", "POP") ?: "POP",
             animPanel = p.getString("anim_panel", "SCALE") ?: "SCALE",
             customAnims = p.getString("custom_anims", "") ?: "",
+            animPanelCfg = p.getString("anim_panel_cfg", "") ?: "",
+            animOpen = p.getString("anim_open", "NONE") ?: "NONE",
+            animOpenCfg = p.getString("anim_open_cfg", "") ?: "",
             spaceSwipe = p.getString("space_swipe", "CURSOR") ?: "CURSOR",
             globeLongPress = p.getString("globe_long_press", "LANGUAGES") ?: "LANGUAGES",
             editBar = p.getBoolean("edit_bar", false),
@@ -753,7 +762,7 @@ object KeyboardPrefs {
         listOf(
             "theme_mode", "accent_shape_preset", "haptic_mode", "font_style", "color_source", "one_handed", "space_swipe", "photo_fit",
             "eco_when", "globe_long_press", "tools_long_press", "window_blur", "hold_mode", "ai_provider", "space_long_action", "languages", "auto_correct_strength", "translate_target", "gemini_model", "anthropic_model", "openai_model", "groq_model", "openrouter_model", "toolbar_order", "toolbar_hidden", "user_layouts",
-            "space_left_key", "space_right_key", "mic_action", "popup_style", "key_variants", "sound_style", "emoji_style", "clipboard_keep", "app_language", "design_style", "shape_amount", "skin_options", "anim_press", "anim_popup", "anim_panel", "custom_anims", "lang_layouts"
+            "space_left_key", "space_right_key", "mic_action", "popup_style", "key_variants", "sound_style", "emoji_style", "clipboard_keep", "app_language", "design_style", "shape_amount", "skin_options", "anim_press", "anim_popup", "anim_panel", "anim_panel_cfg", "anim_open", "anim_open_cfg", "custom_anims", "lang_layouts"
         ).forEach { put(it, 's') }
     }
 
