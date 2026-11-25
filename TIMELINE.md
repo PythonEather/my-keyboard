@@ -7,6 +7,7 @@ so run `bash tools/timeline.sh` after raising `versionName` in `app/build.gradle
 <!-- timeline:start -->
 | Version | Date | Commit | Commit message |
 |---|---|---|---|
+| 11.2.19 | 2026-11-25 | `a243fc0` | 11.2.19: fix Lua mods in the release app |
 | 11.2.18 | 2026-11-25 | `8e80e32` | 11.2.18: Lua 5.4 script engine |
 | 11.2.17 | 2026-11-24 | `882601e` | 11.2.17: fix picture settings always failing |
 | 11.2.16 | 2026-11-24 | `13b7fe2` | 11.2.16: picture settings |
