@@ -2,6 +2,9 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.19
+- Fix: Lua mods failed to load in the release app with `no non-static method LuaPluginRuntime.dispatchHost` (the code shrinker removed the method that the native Lua engine calls); the ProGuard rule now keeps it, like for QuickJS
+
 ## 11.2.18
 - Lua 5.4 as a third script engine next to Rhino and QuickJS: a mod can be a `.lua` file with its manifest in a `--[=[ @plugin { … } ]=]` comment (or `"scriptEngine": "lua"` in a `.json` or `.zip`)
 - Same `kb.*` API, permissions and call limits; tables stand for objects and lists, `kb.json`, `kb.storage`, `print` and `require` are built in

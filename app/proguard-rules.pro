@@ -15,6 +15,11 @@
     native <methods>;
     byte[] dispatchHost(int, byte[]);
 }
+# The native Lua runtime calls dispatchHost by name from C (JNI): without this rule R8 removes it as unused
+-keep class com.expressive.keyboard.LuaPluginRuntime {
+    native <methods>;
+    byte[] dispatchHost(int, byte[]);
+}
 -dontwarn java.beans.**
 -dontwarn javax.lang.model.**
 -dontwarn jdk.dynalink.**
