@@ -58,9 +58,7 @@ android {
         getByName("debug") {
             enableV2Signing = true
             enableV3Signing = true
-            // Один и тот же ключ в каждой сборке: новый APK встаёт поверх старого. Ключ больше не лежит в репозитории:
-            // CI кладёт его из секрета KEYSTORE_B64 в ~/.android/debug.keystore (alias androiddebugkey, пароль android),
-            // а файл signing/ci-debug.keystore, если он у вас локально есть, имеет приоритет (он в .gitignore).
+            // Один и тот же ключ в каждой сборке (signing/ci-debug.keystore лежит в репозитории): новый APK встаёт поверх старого.
             // Раньше путь брался из ~/.android на раннере GitHub, и каждый запуск CI делал новый случайный ключ —
             // Android видел «чужую» подпись и требовал удалить приложение.
             val ciKey = rootProject.file("signing/ci-debug.keystore")

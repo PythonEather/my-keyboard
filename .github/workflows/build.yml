@@ -33,13 +33,10 @@ jobs:
       - name: Android setup
         uses: ./.github/actions/android-setup
 
-      - name: Use the private signing key from secrets (APKs update in place)
-        env:
-          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+      - name: Use the fixed debug signing key (APKs update in place)
         run: |
           mkdir -p ~/.android
-          if [ -z "$KEYSTORE_B64" ]; then echo "::error::Secret KEYSTORE_B64 is missing"; exit 1; fi
-          echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+          cp signing/ci-debug.keystore ~/.android/debug.keystore
 
       - name: Build Release APK (fast, recommended)
         continue-on-error: true
