@@ -613,6 +613,15 @@ internal fun AuthorLine() {
 }
 
 @Composable
+private fun AboutStat(value: String, label: String, modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = cs.onSurface, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1)
+    }
+}
+
+@Composable
 internal fun AboutPage() {
     val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
@@ -620,16 +629,53 @@ internal fun AboutPage() {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
     }
     val spec = remember { WavySpec(ShapeProfile.LOBES, 6, 0.1f) }
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(32.dp)).background(cs.primaryContainer).padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Box(Modifier.size(96.dp).wavyBackground(spec, cs.primary), contentAlignment = Alignment.Center) {
-            Icon(Icons.Rounded.Keyboard, null, tint = cs.onPrimary, modifier = Modifier.size(44.dp))
+    val scope = rememberCoroutineScope()
+    val progress = Updater.progress
+    val update = Updater.available
+    // шапка как на странице приложения в Google Play: большая иконка, имя, автор, ряд цифр и широкая кнопка
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            AppIconWithProgress(96.dp, progress) {
+                Box(Modifier.fillMaxSize().wavyBackground(spec, cs.primary), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Keyboard, null, tint = cs.onPrimary, modifier = Modifier.size(46.dp))
+                }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Expressive Keyboard Pro", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = cs.onSurface)
+                Text(
+                    "@Shahedeer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = cs.primary,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable {
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/Shahedeer")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    }
+                )
+                Text("Material 3 Expressive", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+            }
         }
-        Text("Expressive Keyboard Pro", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = cs.onPrimaryContainer)
-        Text(tr("Версия {0}", version) + " · Material 3 Expressive", style = MaterialTheme.typography.bodyMedium, color = cs.onPrimaryContainer.copy(alpha = 0.8f))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            AboutStat(version, tr("Версия"), Modifier.weight(1f))
+            Box(Modifier.width(1.dp).height(32.dp).background(cs.outlineVariant))
+            AboutStat(Languages.all.size.toString(), tr("Языков"), Modifier.weight(1f))
+            Box(Modifier.width(1.dp).height(32.dp).background(cs.outlineVariant))
+            AboutStat("M3", "Expressive", Modifier.weight(1f))
+        }
+        Button(
+            onClick = {
+                val u = update
+                if (u != null) scope.launch { Updater.downloadAndInstall(context, u) } else scope.launch { Updater.check(context) }
+            },
+            enabled = progress == null && !Updater.checking,
+            modifier = Modifier.fillMaxWidth().height(52.dp)
+        ) {
+            Text(
+                when {
+                    progress != null -> tr("Скачиваю… {0}%", (progress * 100).toInt())
+                    update != null -> tr("Обновить до {0}", update.version)
+                    Updater.checking -> tr("Проверяю…")
+                    else -> tr("Проверить обновления")
+                },
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold
+            )
+        }
     }
     AuthorLine()
     var crash by remember { mutableStateOf(CrashLog.read(context)) }
@@ -668,22 +714,40 @@ internal fun AboutPage() {
         }
     }
     UpdateCard()
-    SettingsSection("Возможности") {
-        listOf(
-            Icons.Rounded.Palette to "Material You: цвета из обоев или из любого своего цвета",
-            Icons.Rounded.Extension to "Моды на JavaScript: свои панели, кнопки, клавиши, события и подсказки",
-            Icons.Rounded.Language to tr("Языков: {0} — с частотными словарями, пиньинем, каной, хангылем и Telex", Languages.all.size),
-            Icons.Rounded.EmojiEmotions to "Все эмодзи Unicode 16 с поиском и встроенными стилями",
-            Icons.Rounded.Brush to "Свои иконки для любых кнопок и вкладок эмодзи",
-            Icons.Rounded.Swipe to "Курсор свайпом по пробелу, удаление слов свайпом по ⌫",
-            Icons.Rounded.SwapHoriz to "Режим одной руки",
-            Icons.Rounded.Translate to "Переводчик, GIF, буфер обмена, голосовой ввод",
-            Icons.Rounded.Spellcheck to "Подсказки и автоисправление, которые учатся вашим словам"
-        ).forEach { (icon, text) ->
-            GroupItem {
-                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconBadge(icon)
-                    Text(tr(text), style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
+    var featuresOpen by remember { mutableStateOf(false) }
+    val arrowTurn by animateFloatAsState(if (featuresOpen) 90f else 0f, spring(dampingRatio = 0.7f, stiffness = 400f), label = "aboutArrow")
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).clickable { featuresOpen = !featuresOpen }
+            .padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(tr("О приложении"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = cs.onSurface)
+        FilledTonalIconButton(onClick = { featuresOpen = !featuresOpen }) {
+            Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, modifier = Modifier.rotate(arrowTurn))
+        }
+    }
+    AnimatedVisibility(
+        featuresOpen,
+        enter = expandVertically(spring(dampingRatio = 0.8f, stiffness = 380f)) + fadeIn(),
+        exit = shrinkVertically(spring(stiffness = 500f)) + fadeOut()
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            listOf(
+                Icons.Rounded.Palette to "Material You: цвета из обоев или из любого своего цвета",
+                Icons.Rounded.Extension to "Моды на JavaScript: свои панели, кнопки, клавиши, события и подсказки",
+                Icons.Rounded.Language to tr("Языков: {0} — с частотными словарями, пиньинем, каной, хангылем и Telex", Languages.all.size),
+                Icons.Rounded.EmojiEmotions to "Все эмодзи Unicode 16 с поиском и встроенными стилями",
+                Icons.Rounded.Brush to "Свои иконки для любых кнопок и вкладок эмодзи",
+                Icons.Rounded.Swipe to "Курсор свайпом по пробелу, удаление слов свайпом по ⌫",
+                Icons.Rounded.SwapHoriz to "Режим одной руки",
+                Icons.Rounded.Translate to "Переводчик, GIF, буфер обмена, голосовой ввод",
+                Icons.Rounded.Spellcheck to "Подсказки и автоисправление, которые учатся вашим словам"
+            ).forEach { (icon, text) ->
+                GroupItem {
+                    Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconBadge(icon)
+                        Text(tr(text), style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
+                    }
                 }
             }
         }

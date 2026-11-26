@@ -143,6 +143,8 @@ internal fun TypingPage(settings: KeyboardSettings, part: SettingsPage) {
     val context = LocalContext.current
     var giphyDialog by remember { mutableStateOf(false) }
     var klipyDialog by remember { mutableStateOf(false) }
+    var catDialog by remember { mutableStateOf(false) }
+    var catSecret by remember { mutableStateOf(false) }
     var keyDialog by remember { mutableStateOf<String?>(null) }
     var modelDialog by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
@@ -488,6 +490,36 @@ internal fun TypingPage(settings: KeyboardSettings, part: SettingsPage) {
                 )
                 ScreenshotClipItem(settings)
             }
+        }
+    }
+    if (part == SettingsPage.CLIPBOARD) {
+        LaunchedEffect(Unit) { ClipCategories.load(context) }
+        SettingsSection("Категории буфера") {
+            InfoCard(Icons.Rounded.Lock, "В панели буфера подержите запись, чтобы отнести её в категорию. Такая запись закрепляется. «Скрывать текст» прячет текст точками на экране, но не шифрует его")
+            ClipCategories.categories.toList().forEach { c ->
+                ActionItem(
+                    if (c.secret) Icons.Rounded.Lock else Icons.AutoMirrored.Rounded.Label, c.name,
+                    if (c.secret) "Текст скрыт точками. Нажмите, чтобы показывать" else "Текст виден. Нажмите, чтобы скрывать",
+                    onClick = { ClipCategories.setSecret(context, c.id, !c.secret) },
+                    trailing = {
+                        IconButton(onClick = { ClipCategories.delete(context, c.id) }) {
+                            Icon(Icons.Rounded.DeleteOutline, tr("Удалить"), tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                )
+            }
+            if (ClipCategories.categories.size < ClipCategories.MAX) {
+                ActionItem(Icons.Rounded.Add, "Создать категорию", "Например «Пароли», «Работа» или «Ссылки на заказы»", onClick = { catSecret = false; catDialog = true })
+                ActionItem(Icons.Rounded.Lock, "Создать скрытую категорию", "Текст в ней показывается точками, например для паролей", onClick = { catSecret = true; catDialog = true })
+            }
+        }
+    }
+    if (catDialog) {
+        TextInputDialog("Новая категория", "", "Название", onDismiss = { catDialog = false }) { v ->
+            if (ClipCategories.create(context, v, catSecret) == null && v.isNotBlank()) {
+                Toast.makeText(context, tr("Такое название уже есть"), Toast.LENGTH_SHORT).show()
+            }
+            catDialog = false
         }
     }
     if (part == SettingsPage.CLIPBOARD) SettingsSection("GIF") {

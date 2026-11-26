@@ -830,7 +830,7 @@ internal fun ToolbarPill(state: KeyboardState, actions: KeyboardActions, setting
 internal fun ToolButton(def: ToolDef, selected: Boolean, palette: KeyPalette, tint: Color, onClick: () -> Unit) {
     val color by animateColorAsState(if (selected) palette.onAccent else tint, tween(160), label = "toolFg")
     Box(
-        modifier = Modifier.toolHighlight(selected, palette.accent).clickable(onClick = onClick),
+        modifier = Modifier.toolHighlight(selected, palette.accent).washClickable(if (selected) palette.onAccent else palette.accent, onClick),
         contentAlignment = Alignment.Center
     ) {
         val slot = def.slot
@@ -846,7 +846,7 @@ internal fun ToolButton(def: ToolDef, selected: Boolean, palette: KeyPalette, ti
 internal fun ToolIcon(icon: ImageVector, selected: Boolean, palette: KeyPalette, tint: Color = palette.onFunc, onClick: () -> Unit) {
     val color by animateColorAsState(if (selected) palette.onAccent else tint, tween(160), label = "toolFg")
     Box(
-        modifier = Modifier.toolHighlight(selected, palette.accent).clickable(onClick = onClick),
+        modifier = Modifier.toolHighlight(selected, palette.accent).washClickable(if (selected) palette.onAccent else palette.accent, onClick),
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
@@ -880,7 +880,7 @@ private fun Modifier.toolHighlight(selected: Boolean, accent: Color): Modifier {
 @Composable
 internal fun ToolText(text: String, tint: Color, onClick: () -> Unit) {
     Box(
-        modifier = Modifier.size(width = 40.dp, height = 36.dp).clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick),
+        modifier = Modifier.size(width = 40.dp, height = 36.dp).clip(RoundedCornerShape(18.dp)).washClickable(tint, onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(text, color = tint, fontSize = if (text.length > 2) 11.sp else 17.sp, maxLines = 1, fontWeight = FontWeight.Bold)

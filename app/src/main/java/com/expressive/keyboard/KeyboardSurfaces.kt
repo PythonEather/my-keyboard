@@ -180,6 +180,8 @@ internal fun CookieButton(
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.86f else 1f, spring(dampingRatio = 0.45f, stiffness = 600f), label = "cookieScale")
     val rot by animateFloatAsState(if (pressed) 25f else 0f, spring(dampingRatio = 0.6f, stiffness = 300f), label = "cookieRot")
+    val wash = remember { Animatable(0f) }
+    val washScope = rememberCoroutineScope()
     Box(
         modifier = Modifier
             .size(size)
@@ -188,7 +190,11 @@ internal fun CookieButton(
                 scaleY = scale
             }
             .wavyBackground(spec, color) { rot }
-            .combinedClickable(interactionSource = interaction, indication = null, onLongClick = onLongClick, onClick = onClick),
+            .drawBehind { drawWash(wash.value, Color.White.copy(alpha = 0.9f), this.size.minDimension / 2f) }
+            .combinedClickable(interactionSource = interaction, indication = null, onLongClick = onLongClick, onClick = {
+                ButtonWash.play(wash, washScope)
+                onClick()
+            }),
         contentAlignment = Alignment.Center,
         content = content
     )

@@ -286,6 +286,14 @@ data class KeyboardSettings(
     val keyPushMode: String = "AWAY",
     /** How much the pushed keys get squeezed (0 = not at all). */
     val keyPushSquash: Float = 0f,
+    /** Wash: a colour wave that slides across ?123, emoji, language, Shift, Enter and the toolbar buttons when tapped. */
+    val buttonWash: Boolean = true,
+    val buttonWashSpeed: Float = 1f,
+    val buttonWashStrength: Float = 0.55f,
+    /** Emoji key in the bottom row: width (1 = as before), icon size and place: DEFAULT | START | AFTER_SPACE. */
+    val emojiKeyWidth: Float = 1f,
+    val emojiKeyIconScale: Float = 1f,
+    val emojiKeyPos: String = "DEFAULT",
     /** Soft fade when the key page changes (letters, numbers and symbols): 0 = instant, 1 = a visible dip. */
     val pageSwitchAnim: Float = 0.5f,
     val panelAnimations: Boolean = true,
@@ -667,6 +675,12 @@ object KeyboardPrefs {
             keyPushSpeed = p.getFloat("key_push_speed", 1f).coerceIn(0.5f, 2f),
             keyPushMode = (p.getString("key_push_mode", "AWAY") ?: "AWAY").takeIf { it == "TOWARD" || it == "SWIRL" } ?: "AWAY",
             keyPushSquash = p.getFloat("key_push_squash", 0f).coerceIn(0f, 0.3f),
+            buttonWash = p.getBoolean("button_wash", true),
+            buttonWashSpeed = p.getFloat("button_wash_speed", 1f).coerceIn(0.5f, 2.5f),
+            buttonWashStrength = p.getFloat("button_wash_strength", 0.55f).coerceIn(0.1f, 1f),
+            emojiKeyWidth = p.getFloat("emoji_key_width", 1f).coerceIn(0.7f, 2.2f),
+            emojiKeyIconScale = p.getFloat("emoji_key_icon_scale", 1f).coerceIn(0.7f, 1.8f),
+            emojiKeyPos = (p.getString("emoji_key_pos", "DEFAULT") ?: "DEFAULT").takeIf { it == "START" || it == "AFTER_SPACE" } ?: "DEFAULT",
             pageSwitchAnim = p.getFloat("page_switch_anim", 0.5f).coerceIn(0f, 1f),
             panelAnimations = p.getBoolean("panel_animations", true),
             ecoWhen = p.getString("eco_when", null) ?: if (p.getBoolean("eco_mode", true)) "SYSTEM" else "NEVER",
@@ -785,7 +799,7 @@ object KeyboardPrefs {
             "key_height_dp", "header_height_dp", "landscape_scale", "corner_radius_dp", "key_spacing_dp", "row_spacing_dp", "bottom_offset_dp",
             "wave_amplitude_percent", "vibration_ms", "vibration_amplitude", "long_press_ms", "enter_hold_ms", "key_opacity", "bg_transparency", "bg_dim",
             "photo_zoom", "photo_width", "photo_height", "photo_x", "photo_y",
-            "bg_blur_dp", "window_blur_dp", "key_label_scale", "side_padding_dp", "one_handed_w", "float_width", "float_key_height_dp", "flick_sensitivity", "space_cursor_speed", "space_line_speed", "enter_width", "number_row_scale", "press_animation", "press_highlight", "key_push_strength", "key_push_rings", "key_push_bounce", "key_push_speed", "key_push_squash", "page_switch_anim", "sound_volume", "anim_speed"
+            "bg_blur_dp", "window_blur_dp", "key_label_scale", "side_padding_dp", "one_handed_w", "float_width", "float_key_height_dp", "flick_sensitivity", "space_cursor_speed", "space_line_speed", "enter_width", "number_row_scale", "press_animation", "press_highlight", "key_push_strength", "key_push_rings", "key_push_bounce", "key_push_speed", "key_push_squash", "button_wash_speed", "button_wash_strength", "emoji_key_width", "emoji_key_icon_scale", "page_switch_anim", "sound_volume", "anim_speed"
         ).forEach { put(it, 'f') }
         listOf(
             "wave_count", "seed_color", "color_background", "color_key", "color_key_text", "color_func",
@@ -795,12 +809,12 @@ object KeyboardPrefs {
             "dynamic_shadow", "bg_frost_static", "show_number_row", "show_key_borders", "key_preview", "key_background", "emoji_return_keyboard", "auto_capitalize", "auto_correct_enabled",
             "double_space_period", "haptics_enabled", "vibrate_on_release", "strong_special_keys", "sound_enabled",
             "show_hints", "show_header", "number_pad", "floating_keyboard", "liquid_glass", "glass_merge", "myanmar_visual", "show_suggestions", "inline_calculator", "enter_hold_send", "show_mic_button", "suggestions_full_width", "show_emoji_key", "show_globe_key", "panel_animations",
-            "backspace_swipe", "swipe_down_hide", "clipboard_history", "clip_offer_top", "key_push", "instant_input", "glide_typing", "glide_trail", "swipe_up_hint",
+            "backspace_swipe", "swipe_down_hide", "clipboard_history", "clip_offer_top", "key_push", "button_wash", "instant_input", "glide_typing", "glide_trail", "swipe_up_hint",
             "space_long_press", "auto_pair", "incognito", "dict_auto_download", "punctuation_keys", "smart_punctuation",
             "system_spellcheck", "edit_bar", "auto_space_punct", "eco_mode", "eco_press", "eco_panels", "eco_blur", "eco_trail", "eco_preview", "eco_haptics", "eco_sound", "eco_suggestions", "dash_merge", "clip_screenshots", "correct_everywhere", "dynamic_zones", "ai_voice_cleanup", "tools_button", "pinned_tools", "landscape_split"
         ).forEach { put(it, 'b') }
         listOf(
-            "theme_mode", "accent_shape_preset", "haptic_mode", "font_style", "color_source", "one_handed", "space_swipe", "photo_fit", "key_push_mode",
+            "theme_mode", "accent_shape_preset", "haptic_mode", "font_style", "color_source", "one_handed", "space_swipe", "photo_fit", "key_push_mode", "emoji_key_pos",
             "eco_when", "globe_long_press", "tools_long_press", "window_blur", "hold_mode", "ai_provider", "space_long_action", "languages", "auto_correct_strength", "translate_target", "gemini_model", "anthropic_model", "openai_model", "groq_model", "openrouter_model", "toolbar_order", "toolbar_hidden", "user_layouts",
             "space_left_key", "space_right_key", "mic_action", "popup_style", "key_variants", "sound_style", "emoji_style", "clipboard_keep", "app_language", "design_style", "shape_amount", "skin_options", "anim_press", "anim_popup", "anim_panel", "anim_panel_cfg", "anim_open", "anim_open_cfg", "custom_anims", "lang_layouts"
         ).forEach { put(it, 's') }

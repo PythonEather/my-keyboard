@@ -6,6 +6,10 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
@@ -303,7 +308,26 @@ object Updater {
     }
 }
 
-/** Карточка «Доступна новая версия»: что нового и кнопка обновления. */
+/**
+ * Иконка приложения, вокруг которой во время загрузки бежит волнистое кольцо прогресса, как в Google Play.
+ * Пока загрузки нет, кольцо скрыто, а иконка занимает всё место.
+ */
+@Composable
+internal fun AppIconWithProgress(size: Dp, progress: Float?, content: @Composable () -> Unit) {
+    val ring = 14.dp
+    val inner by animateDpAsState(
+        if (progress != null) size - ring else size,
+        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow), label = "iconShrink"
+    )
+    Box(Modifier.size(size + 12.dp), contentAlignment = Alignment.Center) {
+        if (progress != null) {
+            CircularWavyProgressIndicator(progress = { progress }, modifier = Modifier.size(size + 12.dp))
+        }
+        Box(Modifier.size(inner)) { content() }
+    }
+}
+
+/** Карточка «Доступна новая версия»: что нового (сворачивается) и состояние загрузки. */
 @Composable
 internal fun UpdateCard() {
     val context = LocalContext.current
@@ -313,8 +337,10 @@ internal fun UpdateCard() {
     val cs = MaterialTheme.colorScheme
     AnimatedVisibility(info != null) {
         val u = info ?: return@AnimatedVisibility
+        var expanded by remember(u.version) { mutableStateOf(false) }
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(glassSurface(cs.surfaceBright)).padding(20.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(glassSurface(cs.surfaceBright)).padding(20.dp)
+                .animateContentSize(spring(dampingRatio = 0.8f, stiffness = 400f)),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -326,14 +352,20 @@ internal fun UpdateCard() {
             }
             if (u.notes.isNotEmpty()) {
                 Text(
-                    u.notes, style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
-                    maxLines = 8, overflow = TextOverflow.Ellipsis
+                    tr("Что нового"), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = cs.primary
                 )
+                Text(
+                    u.notes, style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
+                    maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis
+                )
+                TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                    Text(tr(if (expanded) "Свернуть" else "Подробнее"))
+                }
             }
             val p = Updater.progress
             if (p != null) {
-                LinearWavyProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
-                Text(tr("Скачиваю… {0}%", (p * 100).toInt()), style = MaterialTheme.typography.bodySmall, color = cs.onSurface)
+                // кольцо прогресса бежит вокруг иконки приложения вверху страницы, здесь только проценты
+                Text(tr("Скачиваю… {0}%", (p * 100).toInt()), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = cs.onSurface)
             } else {
                 Button(onClick = { scope.launch { Updater.downloadAndInstall(context, u) } }) {
                     Text(tr("Обновить"))

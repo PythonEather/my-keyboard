@@ -331,7 +331,9 @@ data class KeyboardPlugin(
     /** Arranges the Settings home screen (manifest "settingsLayout", needs the "settings_layout" permission). */
     val settingsLayout: SettingsLayoutSpec? = null,
     /** Arranges the keyboard toolbar (manifest "toolbarLayout", needs the "toolbar_layout" permission). */
-    val toolbarLayout: ToolbarLayoutSpec? = null
+    val toolbarLayout: ToolbarLayoutSpec? = null,
+    /** Version history (manifest "changelog"); shown on its own page instead of inside the description. */
+    val changelog: List<ChangelogEntry> = emptyList()
 ) {
     val usesNetwork: Boolean get() = "network" in permissions && (actions.any { it.type == PluginActionType.HTTP } || script != null)
     /** Есть что применить кнопкой «Применить оформление». */
@@ -569,7 +571,8 @@ object PluginParser {
             skinJson = o.optJSONObject("skin")?.toString(),
             config = parseConfig(o.optJSONArray("config")),
             settingsLayout = PluginSettingsLayout.parse(o.optJSONObject("settingsLayout")),
-            toolbarLayout = PluginToolbarLayout.parse(o.optJSONObject("toolbarLayout"), id)
+            toolbarLayout = PluginToolbarLayout.parse(o.optJSONObject("toolbarLayout"), id),
+            changelog = PluginChangelog.fromJson(o.opt("changelog"))
         )
     }
 

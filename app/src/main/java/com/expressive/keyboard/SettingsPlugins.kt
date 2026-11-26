@@ -429,7 +429,13 @@ internal fun PluginCard(p: KeyboardPlugin, expanded: Boolean, onExpand: () -> Un
                 exit = shrinkVertically() + fadeOut()
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (p.description.isNotBlank()) Text(tr(p.description), style = MaterialTheme.typography.bodyMedium, color = cs.onSurface)
+                    // a long history inside the description is moved out to its own page; the card keeps the short text
+                    val parts = remember(p.id, p.description, p.changelog) {
+                        val (intro, fromText) = PluginChangelog.split(p.description)
+                        intro to p.changelog.ifEmpty { fromText }
+                    }
+                    if (parts.first.isNotBlank()) Text(tr(parts.first), style = MaterialTheme.typography.bodyMedium, color = cs.onSurface)
+                    if (parts.second.isNotEmpty()) ChangelogTeaser(p, parts.second)
                     val perms = p.permissions.filter { it in PluginParser.PERMISSIONS }
                     if (perms.isNotEmpty()) {
                         Text(tr("Разрешения"), style = MaterialTheme.typography.labelLarge, color = cs.primary)

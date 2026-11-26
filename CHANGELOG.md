@@ -2,6 +2,13 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.27
+- About screen like the Google Play Store (Material 3 Expressive): big app icon, name, version and language count, a full-width pill button (Check for updates, Update to X, Downloading N%) and an "About this app" row that opens the feature list. While an update downloads, a wavy circular progress ring runs around the app icon. The update notes show three lines with Read more / Show less
+- Colour wave on buttons (Settings > Animations > Key press, `button_wash`, on by default): tapping ?123 / ABC, the symbols page key, emoji, language, Shift, Enter, a toolbar button or the right-hand header button plays a soft colour wave that slides across it. Speed and strength sliders (`button_wash_speed`, `button_wash_strength`). Nothing runs while no button is tapped
+- Emoji button: width, icon size and place (Settings > Size and position > Emoji button). Width 70% to 220% (`emoji_key_width`), icon 70% to 180% (`emoji_key_icon_scale`), place next to language, first in the bottom row or after the space bar (`emoji_key_pos`). The space bar takes whatever width is left
+- Plugin changelog page: a long version history in a plugin description, or the new manifest field `changelog` (text, list of lines or list of {version, date, notes}), moves out of the plugin card. The card shows the short description and a What's new teaser; Full changelog opens a sheet with the latest version open and older ones folded, with Expand all / Collapse all
+- Clipboard categories: the clipboard panel has filter chips (All, Images, Links and your own). Long-press a clip to move it to a category or take it out; a clip in a category is pinned so Clear and the storage time do not remove it. Quick names (Passwords, Work, Personal, Codes, Addresses, Notes) come with the + chip, any other name is made in Settings > Clipboard > Clipboard categories. A category can hide its text behind dots (not encryption); the eye button in the panel shows it again
+
 ## 11.2.26
 - Neighbour push (Settings > Animations > Key press): a pressed key pushes the keys around it away and they spring back like jelly. Off by default (`key_push`). Sliders for push strength, how many rings of keys move, jelly bounce and speed; neighbours can be pushed away, pulled in or swirled, and squashed a little. It only moves the drawing of the keys, the touch areas stay where they are, and nothing runs while no key is pressed
 - Size and position is now grouped: Keys (size and shape), Keyboard frame and margins, Bar above the keys, Keyboard scale (DPI). Letter size, number row height, Enter key width and top bar thickness are also here now

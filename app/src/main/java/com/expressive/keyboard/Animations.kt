@@ -472,6 +472,25 @@ internal fun AnimationsPage(settings: KeyboardSettings) {
             onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("press_highlight", if (v < 0.05f) 0f else v) } }
         )
         ToggleItem(
+            Icons.Rounded.Animation, "Цветная волна на кнопках",
+            "Нажали ?123, эмодзи, язык, Shift, Enter или кнопку на панели — по ней пробегает цветная волна",
+            settings.buttonWash
+        ) { KeyboardPrefs.edit(context) { putBoolean("button_wash", it) } }
+        if (settings.buttonWash) {
+            SliderItem(
+                icon = Icons.Rounded.Speed, title = "Скорость волны",
+                value = settings.buttonWashSpeed, range = 0.5f..2.5f,
+                format = { String.format("×%.1f", it) },
+                onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("button_wash_speed", v) } }
+            )
+            SliderItem(
+                icon = Icons.Rounded.Animation, title = "Яркость волны",
+                value = settings.buttonWashStrength, range = 0.1f..1f,
+                format = { "${(it * 100).roundToInt()}%" },
+                onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("button_wash_strength", v) } }
+            )
+        }
+        ToggleItem(
             Icons.Rounded.Animation, "Соседние клавиши отодвигаются",
             "Нажатая клавиша отодвигает соседей и они пружинят назад, как желе. Только рисунок: зоны нажатия не двигаются",
             settings.keyPush

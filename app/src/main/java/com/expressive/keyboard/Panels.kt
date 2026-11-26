@@ -60,6 +60,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -732,11 +733,29 @@ internal fun GifPanel(state: KeyboardState, actions: KeyboardActions, settings: 
     }
 }
 
-/** Нажатие — вставить, ✕ — удалить запись, 📌 (или долгое нажатие) — закрепить: закреплённые не стираются «Очистить». */
+/**
+ * Нажатие — вставить, ✕ — удалить запись, 📌 — закрепить (закреплённые не стираются «Очистить»).
+ * Долгое нажатие — отнести запись в категорию. Сверху фильтры: всё, картинки, ссылки и свои категории.
+ */
 @Composable
 internal fun ClipboardPanel(state: KeyboardState, actions: KeyboardActions, palette: KeyPalette, font: FontFamily) {
+    val context = LocalContext.current
+    LaunchedEffect(Unit) { ClipCategories.load(context) }
     val pinned = state.pinnedClips.toList()
-    val items = pinned + state.clipboard.filter { it !in pinned }
+    val all = pinned + state.clipboard.filter { it !in pinned }
+    val cats = ClipCategories.categories.toList()
+    var filter by remember { mutableStateOf("ALL") }
+    var assigning by remember { mutableStateOf<String?>(null) }
+    var adding by remember { mutableStateOf(false) }
+    var reveal by remember { mutableStateOf(false) }
+    // удалённая категория (в настройках) — просто возвращаемся ко всем записям
+    val active = if (filter == "ALL" || filter == "IMAGES" || filter == "LINKS" || cats.any { it.id == filter }) filter else "ALL"
+    val items = when (active) {
+        "ALL" -> all
+        "IMAGES" -> all.filter { ClipImages.isImage(it) }
+        "LINKS" -> all.filter { ClipCategories.isLink(it) }
+        else -> all.filter { ClipCategories.assigned[it] == active }
+    }
     Column(
         modifier = Modifier.fillMaxSize().panelSurface(palette).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -744,11 +763,80 @@ internal fun ClipboardPanel(state: KeyboardState, actions: KeyboardActions, pale
         // высота шапки постоянная — записи не прыгают, когда «Очистить» пропадает
         Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(tr("Буфер обмена"), Modifier.weight(1f), color = palette.onLetter, fontFamily = font, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
-            if (items.size > pinned.size) PillButton(tr("Очистить"), palette.func, palette.onFunc, font) { actions.clearClipboard() }
+            if (cats.any { it.secret }) {
+                Box(
+                    Modifier.size(36.dp).clip(CircleShape).clickable { reveal = !reveal },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (reveal) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                        tr(if (reveal) "Скрыть текст" else "Показать текст"), tint = palette.muted, modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            if (active == "ALL" && all.size > pinned.size) PillButton(tr("Очистить"), palette.func, palette.onFunc, font) { actions.clearClipboard() }
+        }
+        val moving = assigning
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().animateContentSize(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            contentPadding = PaddingValues(horizontal = 2.dp)
+        ) {
+            if (moving == null) {
+                item(key = "f:ALL") { ClipChip(tr("Все"), active == "ALL", palette, font) { filter = "ALL" } }
+                item(key = "f:IMAGES") { ClipChip(tr("Картинки"), active == "IMAGES", palette, font, Icons.Rounded.Image) { filter = "IMAGES" } }
+                item(key = "f:LINKS") { ClipChip(tr("Ссылки"), active == "LINKS", palette, font, Icons.Rounded.Link) { filter = "LINKS" } }
+                items(cats, key = { "c:${it.id}" }) { c ->
+                    ClipChip(c.name, active == c.id, palette, font, if (c.secret) Icons.Rounded.Lock else Icons.AutoMirrored.Rounded.Label) { filter = c.id }
+                }
+                item(key = "f:ADD") { ClipChip("", adding, palette, font, Icons.Rounded.Add) { adding = !adding } }
+            } else {
+                item(key = "m:close") { ClipChip(tr("Отмена"), false, palette, font, Icons.Rounded.Close) { assigning = null } }
+                item(key = "m:none") {
+                    ClipChip(tr("Без категории"), ClipCategories.assigned[moving] == null, palette, font) {
+                        ClipCategories.assign(context, moving, null)
+                        assigning = null
+                    }
+                }
+                items(cats, key = { "m:${it.id}" }) { c ->
+                    ClipChip(c.name, ClipCategories.assigned[moving] == c.id, palette, font, if (c.secret) Icons.Rounded.Lock else Icons.AutoMirrored.Rounded.Label) {
+                        ClipCategories.assign(context, moving, c.id)
+                        // запись в категории закрепляется: её не сотрёт «Очистить» и срок хранения
+                        if (moving !in state.pinnedClips) actions.togglePinClip(moving)
+                        assigning = null
+                    }
+                }
+                item(key = "m:add") { ClipChip("", adding, palette, font, Icons.Rounded.Add) { adding = !adding } }
+            }
+        }
+        // создание категории: готовые имена одним нажатием, своё имя — в настройках (там есть поле ввода)
+        AnimatedVisibility(adding, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(horizontal = 2.dp)) {
+                items(ClipCategories.presets.filter { (n, _) -> cats.none { it.name.equals(tr(n), ignoreCase = true) } }, key = { "p:${it.first}" }) { (n, secret) ->
+                    ClipChip("+ " + tr(n), false, palette, font) {
+                        val made = ClipCategories.create(context, tr(n), secret)
+                        if (made != null && moving != null) {
+                            ClipCategories.assign(context, moving, made.id)
+                            if (moving !in state.pinnedClips) actions.togglePinClip(moving)
+                            assigning = null
+                        }
+                        adding = false
+                    }
+                }
+                item(key = "p:custom") {
+                    ClipChip(tr("Своё имя"), false, palette, font, Icons.Rounded.Settings) {
+                        adding = false
+                        actions.openSettings()
+                    }
+                }
+            }
         }
         if (items.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(tr("Скопируйте текст или картинку — они появятся здесь"), color = palette.muted, fontFamily = font)
+                Text(
+                    tr(if (all.isEmpty()) "Скопируйте текст или картинку — они появятся здесь" else if (active == "ALL" || active == "IMAGES" || active == "LINKS") "Здесь пока ничего нет" else "Пусто: нажмите на запись и подержите, чтобы отнести её сюда"),
+                    color = palette.muted, fontFamily = font, textAlign = TextAlign.Center, modifier = Modifier.padding(16.dp)
+                )
             }
         } else {
             LazyVerticalGrid(
@@ -760,28 +848,48 @@ internal fun ClipboardPanel(state: KeyboardState, actions: KeyboardActions, pale
                 gridItems(items, key = { it }) { t ->
                     val isPinned = t in pinned
                     val image = ClipImages.isImage(t)
+                    val cat = ClipCategories.byId(ClipCategories.assigned[t])
+                    val moveTarget = assigning == t
                     Box(
                         Modifier.fillMaxWidth().animateItem().clip(RoundedCornerShape(16.dp))
                             .background(if (isPinned) palette.accentSoft else palette.onLetter.copy(alpha = 0.07f).compositeOver(palette.letter))
-                            .then(if (isPinned) Modifier.border(1.5.dp, palette.accent.copy(alpha = 0.6f), RoundedCornerShape(16.dp)) else Modifier)
-                            .combinedClickable(onLongClick = { actions.togglePinClip(t) }) { actions.commitClip(t) }
+                            .then(if (isPinned || moveTarget) Modifier.border(1.5.dp, palette.accent.copy(alpha = if (moveTarget) 1f else 0.6f), RoundedCornerShape(16.dp)) else Modifier)
+                            .combinedClickable(onLongClick = { assigning = if (moveTarget) null else t }) { actions.commitClip(t) }
                     ) {
                         if (image) {
                             // картинка — во всю плитку, как в Gboard
                             ClipThumb(t, Modifier.fillMaxWidth().height(112.dp), palette.func)
+                            if (cat != null) {
+                                Text(
+                                    cat.name, color = Color.White, fontFamily = font, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1,
+                                    modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).clip(CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
                         } else {
-                            Text(
-                                t, color = if (isPinned) palette.onAccentSoft else palette.onLetter, fontFamily = font, fontSize = 14.sp,
-                                maxLines = 4, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 34.dp)
-                            )
+                            Column(Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 34.dp)) {
+                                if (cat != null) {
+                                    Text(
+                                        cat.name, color = palette.accent, fontFamily = font, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1,
+                                        modifier = Modifier.padding(bottom = 2.dp)
+                                    )
+                                }
+                                Text(
+                                    if (cat?.secret == true && !reveal) ClipCategories.mask(t) else t,
+                                    color = if (isPinned) palette.onAccentSoft else palette.onLetter, fontFamily = font, fontSize = 14.sp,
+                                    maxLines = 4, overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                         // на картинке значки — на тёмной подложке, чтобы читались на любом фоне
                         val badgeBg = if (image) Color.Black.copy(alpha = 0.45f) else Color.Transparent
                         val badgeFg = if (image) Color.White else palette.muted
                         Column(Modifier.align(Alignment.TopEnd).padding(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Box(
-                                Modifier.size(28.dp).clip(CircleShape).background(badgeBg).clickable { actions.removeClip(t) },
+                                Modifier.size(28.dp).clip(CircleShape).background(badgeBg).clickable {
+                                    ClipCategories.assign(context, t, null)
+                                    actions.removeClip(t)
+                                },
                                 contentAlignment = Alignment.Center
                             ) { Icon(Icons.Rounded.Close, tr("Удалить"), tint = badgeFg, modifier = Modifier.size(16.dp)) }
                             Box(
@@ -798,6 +906,22 @@ internal fun ClipboardPanel(state: KeyboardState, actions: KeyboardActions, pale
                 }
             }
         }
+    }
+}
+
+/** Фильтр-таблетка панели буфера: выбранная заливается акцентом, цвет меняется плавно. */
+@Composable
+private fun ClipChip(label: String, selected: Boolean, palette: KeyPalette, font: FontFamily, icon: ImageVector? = null, onClick: () -> Unit) {
+    val bg by animateColorAsState(if (selected) palette.accent else palette.func, tween(180), label = "clipChipBg")
+    val fg by animateColorAsState(if (selected) palette.onAccent else palette.onFunc, tween(180), label = "clipChipFg")
+    Row(
+        Modifier.height(34.dp).clip(CircleShape).background(bg).clickable(onClick = onClick)
+            .padding(horizontal = if (label.isEmpty()) 9.dp else 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        if (icon != null) Icon(icon, null, tint = fg, modifier = Modifier.size(16.dp))
+        if (label.isNotEmpty()) Text(label, color = fg, fontFamily = font, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
     }
 }
 

@@ -743,6 +743,7 @@ internal fun KeyboardScreen(
         DynamicShadowEffect(settings.dynamicShadow)
         PressHighlightEffect(settings.pressHighlight)
         KeyPushEffect(settings)
+        ButtonWashEffect(settings)
         ScriptOverlayLayer()
         if (fullscreen) {
             ScreenPanelLayer(if (showKeys) keysPx else 0, palette, font)
@@ -853,11 +854,13 @@ internal fun KeyGrid(
     val split = !settings.floating && settings.landscape && settings.landscapeSplit
     val letterRows = remember(
         lang, lang.rows, page, settings.showNumberRow, settings.showGlobeKey, settings.showEmojiKey, settings.punctuationKeys,
-        settings.spaceLeftKey, settings.spaceRightKey, langLabels, pluginLayouts, scriptLayouts, settings.userLayouts
+        settings.spaceLeftKey, settings.spaceRightKey, langLabels, pluginLayouts, scriptLayouts, settings.userLayouts,
+        settings.emojiKeyWidth, settings.emojiKeyPos
     ) {
         KeyboardLayouts.rows(
             lang, page, settings.showNumberRow, settings.showGlobeKey, settings.showEmojiKey, settings.punctuationKeys,
-            langLabels, settings.spaceLeftKey, settings.spaceRightKey, settings.userLayoutMap
+            langLabels, settings.spaceLeftKey, settings.spaceRightKey, settings.userLayoutMap,
+            settings.emojiKeyWidth, settings.emojiKeyPos
         )
     }
     val padRows = remember(state.phoneField) { KeyboardLayouts.numberPad(state.phoneField) }

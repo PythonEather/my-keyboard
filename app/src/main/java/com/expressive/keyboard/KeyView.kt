@@ -281,6 +281,9 @@ internal fun KeyView(
     val drawP by remember { derivedStateOf { (anim.value.coerceIn(0f, 1f) * 8f).roundToInt() / 8f } }
     var pressed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    // wash: colour wave across ?123, emoji, language, Shift and Enter when tapped
+    val wash = remember { Animatable(0f) }
+    val washColor = if (key.type == KeyType.ENTER || key.type == KeyType.SHIFT && shift != ShiftState.OFF) palette.onAccent else palette.accent
     val skin = LocalSkin.current
     val backdrop = LocalBackdrop.current
     // без подложки плашки нет у обычных клавиш; Enter и включённый Shift остаются акцентными
@@ -407,6 +410,7 @@ internal fun KeyView(
                     act.keyDown(k)
                     pressed = true
                     KeyPush.press(cell.coords, scope)
+                    if (k.type in ButtonWash.keyTypes) ButtonWash.play(wash, scope)
                     // размер самой клавиши — без половин промежутков вокруг
                     val inset = Offset(cGx / 2f, cGy / 2f)
                     val iw = max(1f, size.width - cGx.toFloat())
@@ -953,6 +957,11 @@ internal fun KeyView(
                     drawRoundRect(color = lerp(colors.bg, colors.activeBg, p * PressFx.highlight), cornerRadius = cr)
                     if (border) drawRoundRect(color = borderColor, cornerRadius = cr, style = Stroke(1.dp.toPx()))
                 }
+            }
+            // wash: the sweep lies over the key body and under the label
+            .drawBehind {
+                val w = wash.value
+                if (w > 0f) drawWash(w, washColor, fr.first * min(size.width, size.height))
             },
         contentAlignment = Alignment.Center
     ) {
@@ -983,7 +992,7 @@ internal fun KeyView(
             } else SlotIcon("shift", fg, (22f * scale).dp) { GlyphIcon(Glyph.SHIFT, fg, (22f * scale).dp) }
             key.type == KeyType.BACKSPACE -> SlotIcon("backspace", fg, (22f * scale).dp) { GlyphIcon(Glyph.BACKSPACE, fg, (22f * scale).dp) }
             key.type == KeyType.GLOBE -> SlotIcon("globe", fg, (24f * scale).dp) { GlyphIcon(Glyph.GLOBE, fg, (24f * scale).dp) }
-            key.type == KeyType.STICKERS -> SlotIcon("emoji_key", fg, (26f * scale).dp) { GlyphIcon(Glyph.EMOJI, fg, (26f * scale).dp) }
+            key.type == KeyType.STICKERS -> SlotIcon("emoji_key", fg, (26f * scale * settings.emojiKeyIconScale).dp) { GlyphIcon(Glyph.EMOJI, fg, (26f * scale * settings.emojiKeyIconScale).dp) }
             key.type == KeyType.ENTER -> when (enterAction) {
                 EditorInfo.IME_ACTION_SEARCH -> SlotIcon("search", fg, (26f * scale).dp) { Icon(Icons.Rounded.Search, null, tint = fg, modifier = Modifier.size((26f * scale).dp)) }
                 EditorInfo.IME_ACTION_SEND -> SlotIcon("send", fg, (24f * scale).dp) { Icon(Icons.AutoMirrored.Rounded.Send, null, tint = fg, modifier = Modifier.size((24f * scale).dp)) }

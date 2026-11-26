@@ -540,6 +540,31 @@ internal fun KeyboardSizePage(settings: KeyboardSettings) {
             onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("enter_width", v) } }
         )
     }
+    if (settings.showEmojiKey) SettingsSection("Кнопка эмодзи: размер и место") {
+        SliderItem(
+            icon = Icons.Rounded.EmojiEmotions, title = "Ширина кнопки эмодзи",
+            value = settings.emojiKeyWidth, range = 0.7f..2.2f,
+            format = { "${(it * 100).roundToInt()}%" },
+            onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("emoji_key_width", v) } }
+        )
+        SliderItem(
+            icon = Icons.Rounded.EmojiEmotions, title = "Размер значка эмодзи",
+            value = settings.emojiKeyIconScale, range = 0.7f..1.8f,
+            format = { "${(it * 100).roundToInt()}%" },
+            onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("emoji_key_icon_scale", v) } }
+        )
+        ChoiceItem(
+            Icons.Rounded.EmojiEmotions, "Где стоит кнопка эмодзи", "Нижний ряд: ширина пробела подстраивается сама",
+            listOf("DEFAULT" to "Рядом с языком", "START" to "Первой в ряду", "AFTER_SPACE" to "После пробела"), settings.emojiKeyPos
+        ) { v -> KeyboardPrefs.edit(context) { putString("emoji_key_pos", v) } }
+        ActionItem(Icons.Rounded.RestartAlt, "Сбросить кнопку эмодзи", "Ширина, значок и место — как по умолчанию", onClick = {
+            KeyboardPrefs.edit(context) {
+                putFloat("emoji_key_width", 1f)
+                putFloat("emoji_key_icon_scale", 1f)
+                putString("emoji_key_pos", "DEFAULT")
+            }
+        })
+    }
     SettingsSection("Рамка и отступы клавиатуры") {
         SliderItem(
             icon = Icons.Rounded.Straighten, title = "Ширина клавиатуры",

@@ -305,7 +305,8 @@ object KeyboardLayouts {
      */
     private fun bottom(
         mode: String, space: String, letters: Boolean, globe: Boolean, emoji: Boolean, punct: Boolean,
-        languages: List<String>, leftSlot: String = "", rightSlot: String = ""
+        languages: List<String>, leftSlot: String = "", rightSlot: String = "",
+        emojiW: Float = 1f, emojiPos: String = "DEFAULT"
     ): KeyRow {
         // «,» и «.» — только на страницах символов (?123), на буквах — клавиши, выбранные в настройках
         val withPunct = punct && !letters
@@ -318,19 +319,22 @@ object KeyboardLayouts {
         val modeW = if (tight) 1.3f else 1.5f
         val enterW = if (tight) 1.4f else 1.6f
         val sideW = if (tight) 0.9f else 1f
-        val others = modeW + enterW + (if (globe) sideW else 0f) + (if (emoji) sideW else 0f) + (if (withPunct) 2 * sideW else 0f) +
+        val others = modeW + enterW + (if (globe) sideW else 0f) + (if (emoji) sideW * emojiW else 0f) + (if (withPunct) 2 * sideW else 0f) +
             (if (left != null) sideW else 0f) + (if (right != null) sideW else 0f)
         val spaceWeight = max(4.4f, 11f - others)
         return KeyRow(
             buildList {
+                // the emoji key can sit first, next to the language key (default) or after the space bar
+                if (emoji && emojiPos == "START") add(KeyModel("emoji", KeyType.STICKERS, sideW * emojiW))
                 add(KeyModel(mode, KeyType.MODE_SYMBOLS, modeW, if (letters && !withPunct) punctuation else emptyList()))
                 if (globe) add(KeyModel("globe", KeyType.GLOBE, sideW, if (languages.size > 1) languages else emptyList()))
-                if (emoji) add(KeyModel("emoji", KeyType.STICKERS, sideW))
+                if (emoji && emojiPos != "START" && emojiPos != "AFTER_SPACE") add(KeyModel("emoji", KeyType.STICKERS, sideW * emojiW))
                 if (withPunct) add(KeyModel(",", weight = sideW, customVariants = COMMA_VARIANTS))
                 left?.let { add(it.copy(weight = sideW)) }
                 add(KeyModel(space, KeyType.SPACE, spaceWeight))
                 right?.let { add(it.copy(weight = sideW)) }
                 if (withPunct) add(KeyModel(".", weight = sideW, customVariants = PERIOD_VARIANTS))
+                if (emoji && emojiPos == "AFTER_SPACE") add(KeyModel("emoji", KeyType.STICKERS, sideW * emojiW))
                 add(KeyModel("enter", KeyType.ENTER, enterW))
             }
         )
@@ -436,7 +440,9 @@ object KeyboardLayouts {
         languages: List<String> = emptyList(),
         leftSlot: String = "",
         rightSlot: String = "",
-        user: Map<String, List<String>> = emptyMap()
+        user: Map<String, List<String>> = emptyMap(),
+        emojiW: Float = 1f,
+        emojiPos: String = "DEFAULT"
     ): List<KeyRow> {
         // раскладка из плагина: без {space} заменяет только верхние ряды, с {space} — всю клавиатуру
         val id = layoutId(lang, page)
@@ -455,12 +461,12 @@ object KeyboardLayouts {
         // свои места клавиш (настройки → «Свои места клавиш»)
         val order = user[userLayoutId(lang, page)]
         return when (page) {
-            1 -> UserLayouts.apply(custom ?: symbols1For(lang), order, bottom("ABC", lang.spaceLabel, false, globe, emoji, punct, languages))
-            2 -> UserLayouts.apply(custom ?: symbols2, order, bottom("ABC", lang.spaceLabel, false, globe, emoji, punct, languages))
+            1 -> UserLayouts.apply(custom ?: symbols1For(lang), order, bottom("ABC", lang.spaceLabel, false, globe, emoji, punct, languages, emojiW = emojiW, emojiPos = emojiPos))
+            2 -> UserLayouts.apply(custom ?: symbols2, order, bottom("ABC", lang.spaceLabel, false, globe, emoji, punct, languages, emojiW = emojiW, emojiPos = emojiPos))
             else -> {
                 val base = UserLayouts.apply(
                     custom ?: lettersFor(lang), order,
-                    bottom("?123", lang.spaceLabel, true, globe, emoji, punct, languages, leftSlot, rightSlot)
+                    bottom("?123", lang.spaceLabel, true, globe, emoji, punct, languages, leftSlot, rightSlot, emojiW, emojiPos)
                 )
                 val rows = if (withNumbers) UserLayouts.apply(listOf(numberRow), user[UserLayouts.NUMBERS]) + base else base
                 if (lang.composer == Composer.ETHIOPIC) withEthiopicPunct(rows) else rows
