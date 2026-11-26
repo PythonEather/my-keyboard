@@ -406,6 +406,7 @@ internal fun KeyView(
                     // сначала отклик (вибрация, звук), потом всё остальное
                     act.keyDown(k)
                     pressed = true
+                    KeyPush.press(cell.coords, scope)
                     // размер самой клавиши — без половин промежутков вокруг
                     val inset = Offset(cGx / 2f, cGy / 2f)
                     val iw = max(1f, size.width - cGx.toFloat())
@@ -907,6 +908,7 @@ internal fun KeyView(
                     } finally {
                         Rollover.done(holder)
                         pressed = false
+                        KeyPush.release(scope)
                         popup.clear(holder)
                         if (k.type == KeyType.CHARACTER) glide.trail.clear()
                         act.keyUp()
@@ -925,6 +927,7 @@ internal fun KeyView(
             .graphicsLayer {
                 Anims.apply(this, pressAnim, anim.value.coerceIn(-0.6f, 1.3f), press)
                 applyKeyFx(KeyboardGeometry.nameOf(key, label), key.type == KeyType.CHARACTER)
+                KeyPush.apply(this, cell.coords)
             }
             // тени и свечение — снаружи кэшируемого слоя (иначе обрежутся по краю клавиши)
             .drawBehind {

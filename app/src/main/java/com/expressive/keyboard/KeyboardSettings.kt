@@ -228,11 +228,16 @@ data class KeyboardSettings(
     val settingsWallpaper: Long = 0L,
     /** Frosted glass over that wallpaper: 0 off, 1 light, 2 medium, 3 strong. */
     val settingsGlass: Int = 2,
+    /** Live (video) wallpaper behind the keyboard keys and behind Settings; 0 = none. The value is the pick time. */
+    val liveBgVersion: Long = 0L,
+    val liveSettingsVersion: Long = 0L,
     // --- клавиши ---
     val keyLabelScale: Float = 1f,
     val fontWeight: Int = 700,
     val showHints: Boolean = true,
     val sidePaddingDp: Float = 6f,
+    /** Own screen density for the keyboard only (dpi). 0 = the system one. */
+    val customDpi: Int = 0,
     val oneHanded: String = "OFF",                // OFF | LEFT | RIGHT
     val oneHandedWidth: Float = 0.7f,
     /** Плавающая клавиатура: небольшое окно, которое можно перетащить в любое место экрана. */
@@ -271,6 +276,16 @@ data class KeyboardSettings(
     val pressAnimation: Float = 1f,               // 0 = без анимации нажатия
     /** How strongly a pressed key changes color / glows: 0 = no color change at all, 1 = as the theme draws it. */
     val pressHighlight: Float = 1f,
+    /** Neighbour push: keys around a pressed key slide away and bounce back (visual only). */
+    val keyPush: Boolean = false,
+    val keyPushStrength: Float = 4f,
+    val keyPushRings: Float = 1.5f,
+    val keyPushBounce: Float = 0.35f,
+    val keyPushSpeed: Float = 1f,
+    /** AWAY (push away), TOWARD (pull in like a magnet) or SWIRL (swirl around the pressed key). */
+    val keyPushMode: String = "AWAY",
+    /** How much the pushed keys get squeezed (0 = not at all). */
+    val keyPushSquash: Float = 0f,
     /** Soft fade when the key page changes (letters, numbers and symbols): 0 = instant, 1 = a visible dip. */
     val pageSwitchAnim: Float = 0.5f,
     val panelAnimations: Boolean = true,
@@ -319,6 +334,8 @@ data class KeyboardSettings(
     val numberRowScale: Float = 0.78f,            // высота ряда цифр относительно ряда букв
     val backspaceSwipe: Boolean = true,           // свайп влево по ⌫ удаляет слово
     val clipboardHistory: Boolean = true,
+    /** Just-copied offer (paste chip) sits in its own row above the toolbar instead of replacing it. */
+    val clipOfferTop: Boolean = false,
     val clipboardSize: Int = 50,
     /** Сколько хранить записи буфера: 1H | 1D | 7D | 30D | FOREVER. */
     val clipboardKeep: String = "FOREVER",
@@ -612,10 +629,13 @@ object KeyboardPrefs {
             homePins = p.getString("home_pins", "") ?: "",
             settingsWallpaper = p.getLong("settings_wallpaper", 0L),
             settingsGlass = p.getInt("settings_glass", 2).coerceIn(0, 3),
+            liveBgVersion = p.getLong("live_bg_version", 0L),
+            liveSettingsVersion = p.getLong("live_settings_version", 0L),
             keyLabelScale = p.getFloat("key_label_scale", 1f).coerceIn(0.7f, 1.4f),
             fontWeight = p.getInt("font_weight", 700).coerceIn(300, 900),
             showHints = p.getBoolean("show_hints", true),
             sidePaddingDp = p.getFloat("side_padding_dp", 6f).coerceIn(0f, 32f),
+            customDpi = p.getInt("custom_dpi", 0).let { if (it <= 0) 0 else it.coerceIn(120, 640) },
             oneHanded = p.getString("one_handed", "OFF") ?: "OFF",
             oneHandedWidth = p.getFloat("one_handed_w", 0.7f).coerceIn(0.55f, 0.9f),
             floating = p.getBoolean("floating_keyboard", false),
@@ -640,6 +660,13 @@ object KeyboardPrefs {
             showGlobeKey = p.getBoolean("show_globe_key", true),
             pressAnimation = p.getFloat("press_animation", 1f).coerceIn(0f, 2f),
             pressHighlight = p.getFloat("press_highlight", 1f).coerceIn(0f, 1f),
+            keyPush = p.getBoolean("key_push", false),
+            keyPushStrength = p.getFloat("key_push_strength", 4f).coerceIn(1f, 14f),
+            keyPushRings = p.getFloat("key_push_rings", 1.5f).coerceIn(1f, 4f),
+            keyPushBounce = p.getFloat("key_push_bounce", 0.35f).coerceIn(0.15f, 1f),
+            keyPushSpeed = p.getFloat("key_push_speed", 1f).coerceIn(0.5f, 2f),
+            keyPushMode = (p.getString("key_push_mode", "AWAY") ?: "AWAY").takeIf { it == "TOWARD" || it == "SWIRL" } ?: "AWAY",
+            keyPushSquash = p.getFloat("key_push_squash", 0f).coerceIn(0f, 0.3f),
             pageSwitchAnim = p.getFloat("page_switch_anim", 0.5f).coerceIn(0f, 1f),
             panelAnimations = p.getBoolean("panel_animations", true),
             ecoWhen = p.getString("eco_when", null) ?: if (p.getBoolean("eco_mode", true)) "SYSTEM" else "NEVER",
@@ -671,6 +698,7 @@ object KeyboardPrefs {
             enterWidth = p.getFloat("enter_width", 1f).coerceIn(1f, 1.8f),
             numberRowScale = p.getFloat("number_row_scale", 0.78f).coerceIn(0.6f, 1.1f),
             clipboardHistory = p.getBoolean("clipboard_history", true),
+            clipOfferTop = p.getBoolean("clip_offer_top", false),
             // 0 — без ограничения числа записей
             clipboardSize = p.getInt("clipboard_size", 50).let { if (it <= 0) Int.MAX_VALUE else it.coerceIn(5, 5000) },
             clipboardKeep = p.getString("clipboard_keep", "FOREVER") ?: "FOREVER",
@@ -757,22 +785,22 @@ object KeyboardPrefs {
             "key_height_dp", "header_height_dp", "landscape_scale", "corner_radius_dp", "key_spacing_dp", "row_spacing_dp", "bottom_offset_dp",
             "wave_amplitude_percent", "vibration_ms", "vibration_amplitude", "long_press_ms", "enter_hold_ms", "key_opacity", "bg_transparency", "bg_dim",
             "photo_zoom", "photo_width", "photo_height", "photo_x", "photo_y",
-            "bg_blur_dp", "window_blur_dp", "key_label_scale", "side_padding_dp", "one_handed_w", "float_width", "float_key_height_dp", "flick_sensitivity", "space_cursor_speed", "space_line_speed", "enter_width", "number_row_scale", "press_animation", "press_highlight", "page_switch_anim", "sound_volume", "anim_speed"
+            "bg_blur_dp", "window_blur_dp", "key_label_scale", "side_padding_dp", "one_handed_w", "float_width", "float_key_height_dp", "flick_sensitivity", "space_cursor_speed", "space_line_speed", "enter_width", "number_row_scale", "press_animation", "press_highlight", "key_push_strength", "key_push_rings", "key_push_bounce", "key_push_speed", "key_push_squash", "page_switch_anim", "sound_volume", "anim_speed"
         ).forEach { put(it, 'f') }
         listOf(
             "wave_count", "seed_color", "color_background", "color_key", "color_key_text", "color_func",
-            "color_func_text", "color_accent", "color_accent_text", "font_weight", "clipboard_size"
+            "color_func_text", "color_accent", "color_accent_text", "font_weight", "clipboard_size", "custom_dpi"
         ).forEach { put(it, 'i') }
         listOf(
             "dynamic_shadow", "bg_frost_static", "show_number_row", "show_key_borders", "key_preview", "key_background", "emoji_return_keyboard", "auto_capitalize", "auto_correct_enabled",
             "double_space_period", "haptics_enabled", "vibrate_on_release", "strong_special_keys", "sound_enabled",
             "show_hints", "show_header", "number_pad", "floating_keyboard", "liquid_glass", "glass_merge", "myanmar_visual", "show_suggestions", "inline_calculator", "enter_hold_send", "show_mic_button", "suggestions_full_width", "show_emoji_key", "show_globe_key", "panel_animations",
-            "backspace_swipe", "swipe_down_hide", "clipboard_history", "instant_input", "glide_typing", "glide_trail", "swipe_up_hint",
+            "backspace_swipe", "swipe_down_hide", "clipboard_history", "clip_offer_top", "key_push", "instant_input", "glide_typing", "glide_trail", "swipe_up_hint",
             "space_long_press", "auto_pair", "incognito", "dict_auto_download", "punctuation_keys", "smart_punctuation",
             "system_spellcheck", "edit_bar", "auto_space_punct", "eco_mode", "eco_press", "eco_panels", "eco_blur", "eco_trail", "eco_preview", "eco_haptics", "eco_sound", "eco_suggestions", "dash_merge", "clip_screenshots", "correct_everywhere", "dynamic_zones", "ai_voice_cleanup", "tools_button", "pinned_tools", "landscape_split"
         ).forEach { put(it, 'b') }
         listOf(
-            "theme_mode", "accent_shape_preset", "haptic_mode", "font_style", "color_source", "one_handed", "space_swipe", "photo_fit",
+            "theme_mode", "accent_shape_preset", "haptic_mode", "font_style", "color_source", "one_handed", "space_swipe", "photo_fit", "key_push_mode",
             "eco_when", "globe_long_press", "tools_long_press", "window_blur", "hold_mode", "ai_provider", "space_long_action", "languages", "auto_correct_strength", "translate_target", "gemini_model", "anthropic_model", "openai_model", "groq_model", "openrouter_model", "toolbar_order", "toolbar_hidden", "user_layouts",
             "space_left_key", "space_right_key", "mic_action", "popup_style", "key_variants", "sound_style", "emoji_style", "clipboard_keep", "app_language", "design_style", "shape_amount", "skin_options", "anim_press", "anim_popup", "anim_panel", "anim_panel_cfg", "anim_open", "anim_open_cfg", "custom_anims", "lang_layouts"
         ).forEach { put(it, 's') }

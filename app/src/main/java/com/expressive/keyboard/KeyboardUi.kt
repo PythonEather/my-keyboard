@@ -190,6 +190,10 @@ fun KeyboardRoot(
             oneHanded = "OFF", keyboardWidth = 1f
         ) else s
     }
+    // own DPI for the keyboard: every dp inside the keyboard is measured with this density, so the layout rescales by itself
+    val systemDensity = LocalDensity.current
+    val keyboardDensity = if (settings.customDpi > 0) androidx.compose.ui.unit.Density(settings.customDpi / 160f, systemDensity.fontScale) else systemDensity
+    CompositionLocalProvider(LocalDensity provides keyboardDensity) {
     ExpressiveTheme(settings) {
         val palette = rememberKeyPalette(settings)
         val baseFont = LocalKeyFont.current
@@ -248,7 +252,9 @@ fun KeyboardRoot(
             val systemMinimum = maxOf(cutout, usedByButtons, min(nav, 12.dp))
             // Сдвигаем клавиши внутри регулируемого зазора, сохраняя место под системную навигацию.
             val adjustableGap = (settings.bottomOffsetDp - BOTTOM_OFFSET_RANGE.start).dp
-            if (floating) settings.bottomOffsetDp.dp
+            // mod full screen: no keyboard padding, otherwise on the turned canvas it becomes a white strip on one side
+            if (fullscreen) 0.dp
+            else if (floating) settings.bottomOffsetDp.dp
             else systemMinimum + adjustableGap
         }
         CompositionLocalProvider(LocalSkin provides skin, LocalBackdrop provides backdrop) {
@@ -258,7 +264,7 @@ fun KeyboardRoot(
           FloatingFrame(floating, settings, safeEdges, palette, corner, onFloatBounds) { keyHeight ->
             Surface(
                 modifier = fill,
-                shape = if (floating) RectangleShape else RoundedCornerShape(topStart = corner.dp, topEnd = corner.dp),
+                shape = if (floating || fullscreen) RectangleShape else RoundedCornerShape(topStart = corner.dp, topEnd = corner.dp),
                 // при размытии окна фон рисует само окно (дымка поверх размытия)
                 // размытие просили, но система его не даёт — фон «матовый»: почти непрозрачный, а не прозрачный
                 color = if (blurDp != null) Color.Transparent
@@ -273,7 +279,15 @@ fun KeyboardRoot(
                     if (skin != null && skin.hasBackground && blurDp == null && bgAlpha > 0.01f) {
                         Canvas(Modifier.matchParentSize().graphicsLayer { alpha = bgAlpha }) { drawSkinBackground(skin, size) }
                     }
-                    if (image != null && bgAlpha > 0.01f) {
+                    // live wallpaper: a muted looping video; it replaces the photo while it is set
+                    val liveFile = if (settings.liveBgVersion != 0L) LiveWallpaper.file(LocalContext.current, "keyboard") else null
+                    if (liveFile != null && bgAlpha > 0.01f) {
+                        LiveWallpaperView(
+                            liveFile, settings.liveBgVersion, Modifier.matchParentSize(), alpha = bgAlpha,
+                            scrim = palette.background.copy(alpha = settings.bgDim * bgAlpha)
+                        )
+                    }
+                    if (image != null && liveFile == null && bgAlpha > 0.01f) {
                         KeyboardPhoto(image, settings, Modifier.matchParentSize(), bgAlpha)
                         if (settings.bgDim > 0f) Box(Modifier.matchParentSize().background(palette.background.copy(alpha = settings.bgDim * bgAlpha)))
                     }
@@ -289,7 +303,7 @@ fun KeyboardRoot(
                         fill
                             // плавающая не стоит у края экрана: отступы под панель навигации и вырез ей не нужны
                             .then(
-                                if (floating) Modifier
+                                if (floating || fullscreen) Modifier
                                 else Modifier.padding(horizontal = side)
                             )
                             .padding(bottom = bottom)
@@ -311,6 +325,7 @@ fun KeyboardRoot(
           }
           }
         }
+    }
     }
 }
 
@@ -683,6 +698,10 @@ internal fun KeyboardScreen(
             verticalArrangement = Arrangement.spacedBy(gap)
         ) {
             if (settings.editBar && !settings.landscape) EditBar(state, actions, palette)
+            // just-copied offer in its own row above the toolbar, so the toolbar and the suggestions stay where they are
+            if (settings.clipOfferTop && panel == ActivePanel.KEYBOARD && !state.toolbarOpen) {
+                state.clipOffer?.let { ClipOfferStrip(it, actions, palette, font, secret = state.clipOfferSecret) }
+            }
             // закреплённая панель функций — одна: если строку инструментов открыли в заголовке, вторая не нужна
             if (settings.pinnedTools && panel == ActivePanel.KEYBOARD && !state.toolbarOpen) {
                 Box(Modifier.fillMaxWidth().height((if (settings.landscape) settings.headerHeightDp - 8f else settings.headerHeightDp).dp), contentAlignment = Alignment.Center) {
@@ -723,6 +742,7 @@ internal fun KeyboardScreen(
         GlideTrailLayer(glide, trailColor, settings.glideTrail)
         DynamicShadowEffect(settings.dynamicShadow)
         PressHighlightEffect(settings.pressHighlight)
+        KeyPushEffect(settings)
         ScriptOverlayLayer()
         if (fullscreen) {
             ScreenPanelLayer(if (showKeys) keysPx else 0, palette, font)

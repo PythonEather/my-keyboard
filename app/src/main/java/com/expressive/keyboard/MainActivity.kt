@@ -282,9 +282,12 @@ internal fun importBackground(context: Context, uri: Uri): Boolean = runCatching
 @Composable
 fun SettingsScreen(settings: KeyboardSettings) {
     val wallpaper = rememberSettingsWallpaper(settings)
+    val liveFile = if (settings.liveSettingsVersion != 0L) LiveWallpaper.file(androidx.compose.ui.platform.LocalContext.current, "settings") else null
     Box(Modifier.fillMaxSize()) {
-        if (wallpaper != null) SettingsWallpaperLayer(wallpaper, Modifier.fillMaxSize())
-        CompositionLocalProvider(LocalSettingsGlass provides (wallpaper != null)) { SettingsScreenBody(settings) }
+        if (liveFile != null) {
+            LiveWallpaperView(liveFile, settings.liveSettingsVersion, Modifier.fillMaxSize(), scrim = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.32f))
+        } else if (wallpaper != null) SettingsWallpaperLayer(wallpaper, Modifier.fillMaxSize())
+        CompositionLocalProvider(LocalSettingsGlass provides (wallpaper != null || liveFile != null)) { SettingsScreenBody(settings) }
     }
 }
 

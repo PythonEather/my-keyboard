@@ -168,7 +168,7 @@ internal fun HeaderBar(
             state.suggestions.none { c -> !c.isEmpty && !c.isUndo && c.isKeepExact && c.isPrimary }
     }
     // только что скопированное — предложить вставить, даже если подсказки выключены
-    val offer = state.clipOffer.takeIf { inline == null && panel == ActivePanel.KEYBOARD && !state.toolbarOpen && !showCandidates }
+    val offer = state.clipOffer.takeIf { inline == null && panel == ActivePanel.KEYBOARD && !state.toolbarOpen && !showCandidates && !settings.clipOfferTop }
     // пустое поле — меню функций вместо подсказок
     // в переводчике — подсказки для набираемого там слова
     val translating = panel == ActivePanel.TRANSLATE && settings.showSuggestions

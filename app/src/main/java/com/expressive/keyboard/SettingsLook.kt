@@ -169,6 +169,12 @@ internal fun HomeLookSection(settings: KeyboardSettings) {
             else Toast.makeText(context, tr("Не удалось открыть картинку"), Toast.LENGTH_LONG).show()
         }
     }
+    val livePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) LiveWallpaper.importAsync(context, uri, "settings") { ok ->
+            if (ok) KeyboardPrefs.edit(context) { putLong("live_settings_version", System.currentTimeMillis()) }
+            else Toast.makeText(context, tr("Не удалось открыть видео. Нужен ролик до 60 МБ"), Toast.LENGTH_LONG).show()
+        }
+    }
     SettingsSection("This screen") {
         ActionItem(
             Icons.Rounded.Wallpaper, "Wallpaper behind Settings",
@@ -183,6 +189,17 @@ internal fun HomeLookSection(settings: KeyboardSettings) {
             ActionItem(Icons.Rounded.DeleteOutline, "Remove wallpaper", null, onClick = {
                 SettingsWallpaper.remove(context)
                 KeyboardPrefs.edit(context) { putLong("settings_wallpaper", 0L) }
+            })
+        }
+        ActionItem(
+            Icons.Rounded.Wallpaper, "Живые обои за настройками",
+            if (settings.liveSettingsVersion != 0L) "Нажмите, чтобы выбрать другое видео" else "Видео из галереи играет по кругу без звука, пока открыты настройки",
+            onClick = { livePicker.launch("video/*") }
+        )
+        if (settings.liveSettingsVersion != 0L) {
+            ActionItem(Icons.Rounded.DeleteOutline, "Убрать живые обои", null, onClick = {
+                LiveWallpaper.remove(context, "settings")
+                KeyboardPrefs.edit(context) { putLong("live_settings_version", 0L) }
             })
         }
     }

@@ -365,6 +365,30 @@ internal fun ColorsPage(settings: KeyboardSettings) {
             )
         }
     }
+    val liveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) LiveWallpaper.importAsync(context, uri, "keyboard") { ok ->
+            if (ok) KeyboardPrefs.edit(context) { putLong("live_bg_version", System.currentTimeMillis()) }
+            else Toast.makeText(context, tr("Не удалось открыть видео. Нужен ролик до 60 МБ"), Toast.LENGTH_LONG).show()
+        }
+    }
+    SettingsSection("Живые обои под клавишами") {
+        ActionItem(
+            icon = Icons.Rounded.Wallpaper,
+            title = if (settings.liveBgVersion != 0L) "Сменить видео" else "Выбрать видео",
+            subtitle = "Ролик играет по кругу без звука под клавишами и заменяет фоновую картинку. Пока клавиатура закрыта, он стоит",
+            onClick = { liveLauncher.launch("video/*") },
+            trailing = if (settings.liveBgVersion != 0L) {
+                {
+                    IconButton(onClick = {
+                        LiveWallpaper.remove(context, "keyboard")
+                        KeyboardPrefs.edit(context) { putLong("live_bg_version", 0L) }
+                    }) {
+                        Icon(Icons.Rounded.DeleteOutline, "Убрать видео", tint = cs.error)
+                    }
+                }
+            } else null
+        )
+    }
     SettingsSection("Фоновая картинка") {
         ActionItem(
             icon = Icons.Rounded.Wallpaper,
@@ -469,7 +493,7 @@ internal fun ColorsPage(settings: KeyboardSettings) {
 @Composable
 internal fun KeyboardSizePage(settings: KeyboardSettings) {
     val context = LocalContext.current
-    SettingsSection("Размеры") {
+    SettingsSection("Клавиши: размер и форма") {
         SliderItem(
             icon = Icons.Rounded.Height, title = "Высота клавиш",
             // на планшете (от 600 dp) клавиши можно сделать заметно выше
@@ -477,13 +501,6 @@ internal fun KeyboardSizePage(settings: KeyboardSettings) {
             format = { "${it.roundToInt()} dp" },
             onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("key_height_dp", v) } }
         )
-        SliderItem(
-            icon = Icons.Rounded.Straighten, title = "Ширина клавиатуры",
-            value = settings.keyboardWidth, range = 0.5f..1f,
-            format = { "${(it * 100).roundToInt()}%" },
-            onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("keyboard_width", if (v > 0.98f) 1f else v) } }
-        )
-        LandscapeScaleItem(settings)
         SliderItem(
             icon = Icons.Rounded.RoundedCorner, title = "Скругление клавиш",
             value = settings.cornerRadiusDp, range = 6f..30f,
@@ -503,6 +520,34 @@ internal fun KeyboardSizePage(settings: KeyboardSettings) {
             onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("row_spacing_dp", v) } }
         )
         SliderItem(
+            icon = Icons.Rounded.FormatSize, title = "Размер букв",
+            value = settings.keyLabelScale, range = 0.7f..1.4f,
+            format = { "${(it * 100).roundToInt()}%" },
+            onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("key_label_scale", v) } }
+        )
+        if (settings.showNumberRow) {
+            SliderItem(
+                icon = Icons.Rounded.Height, title = "Высота ряда цифр",
+                value = settings.numberRowScale, range = 0.6f..1.1f,
+                format = { "${(it * 100).roundToInt()}%" },
+                onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("number_row_scale", v) } }
+            )
+        }
+        SliderItem(
+            icon = Icons.Rounded.KeyboardReturn, title = "Ширина клавиши ввода",
+            value = settings.enterWidth, range = 1f..1.8f,
+            format = { "${(it * 100).roundToInt()}%" },
+            onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("enter_width", v) } }
+        )
+    }
+    SettingsSection("Рамка и отступы клавиатуры") {
+        SliderItem(
+            icon = Icons.Rounded.Straighten, title = "Ширина клавиатуры",
+            value = settings.keyboardWidth, range = 0.5f..1f,
+            format = { "${(it * 100).roundToInt()}%" },
+            onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("keyboard_width", if (v > 0.98f) 1f else v) } }
+        )
+        SliderItem(
             icon = Icons.Rounded.Straighten, title = "Отступы по бокам",
             value = settings.sidePaddingDp, range = 0f..32f,
             format = { "${it.roundToInt()} dp" },
@@ -513,6 +558,30 @@ internal fun KeyboardSizePage(settings: KeyboardSettings) {
             value = settings.bottomOffsetDp, range = BOTTOM_OFFSET_RANGE,
             format = { "${it.roundToInt()} dp" },
             onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("bottom_offset_dp", v) } }
+        )
+        LandscapeScaleItem(settings)
+    }
+    SettingsSection("Панель над клавишами") {
+        SliderItem(
+            icon = Icons.Rounded.Height, title = "Толщина верхней панели",
+            value = settings.headerHeightDp, range = 40f..60f,
+            format = { "${it.roundToInt()} dp" },
+            onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("header_height_dp", v) } }
+        )
+    }
+    SettingsSection("Масштаб клавиатуры (DPI)") {
+        val systemDpi = context.resources.displayMetrics.densityDpi
+        ChoiceItem(
+            Icons.Rounded.Straighten, "Плотность экрана клавиатуры",
+            tr("Меняет только клавиатуру, а не весь телефон. Больше DPI — всё крупнее, меньше — мельче. Сейчас в системе: {0} dpi", systemDpi),
+            listOf("0" to "Как в системе", "320" to "320", "360" to "360", "420" to "420", "480" to "480", "560" to "560"),
+            settings.customDpi.toString()
+        ) { v -> KeyboardPrefs.edit(context) { putInt("custom_dpi", v.toIntOrNull() ?: 0) } }
+        SliderItem(
+            icon = Icons.Rounded.Straighten, title = "Своё значение DPI",
+            value = if (settings.customDpi == 0) 160f else settings.customDpi.toFloat(), range = 160f..640f,
+            format = { if (it <= 165f) tr("Как в системе") else "${it.roundToInt()} dpi" },
+            onCommit = { v -> KeyboardPrefs.edit(context) { putInt("custom_dpi", if (v <= 165f) 0 else (v / 10f).roundToInt() * 10) } }
         )
     }
     SettingsSection("Режим одной руки") {

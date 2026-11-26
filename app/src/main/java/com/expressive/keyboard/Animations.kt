@@ -471,6 +471,47 @@ internal fun AnimationsPage(settings: KeyboardSettings) {
             format = { if (it < 0.05f) tr("Выкл") else "${(it * 100).roundToInt()}%" },
             onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("press_highlight", if (v < 0.05f) 0f else v) } }
         )
+        ToggleItem(
+            Icons.Rounded.Animation, "Соседние клавиши отодвигаются",
+            "Нажатая клавиша отодвигает соседей и они пружинят назад, как желе. Только рисунок: зоны нажатия не двигаются",
+            settings.keyPush
+        ) { KeyboardPrefs.edit(context) { putBoolean("key_push", it) } }
+        if (settings.keyPush) {
+            SliderItem(
+                icon = Icons.Rounded.Animation, title = "Сила отталкивания",
+                value = settings.keyPushStrength, range = 1f..14f,
+                format = { "${it.roundToInt()} dp" },
+                onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("key_push_strength", v) } }
+            )
+            SliderItem(
+                icon = Icons.Rounded.Animation, title = "Сколько рядов клавиш двигается",
+                value = settings.keyPushRings, range = 1f..4f,
+                format = { String.format("%.1f", it) },
+                onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("key_push_rings", v) } }
+            )
+            SliderItem(
+                icon = Icons.Rounded.Animation, title = "Желейность отскока",
+                value = 1f - settings.keyPushBounce, range = 0f..0.85f,
+                format = { "${(it / 0.85f * 100).roundToInt()}%" },
+                onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("key_push_bounce", 1f - v) } }
+            )
+            ChoiceItem(
+                Icons.Rounded.Animation, "Как двигаются соседи", null,
+                listOf("AWAY" to "Отталкиваются", "TOWARD" to "Притягиваются", "SWIRL" to "Закручиваются"), settings.keyPushMode
+            ) { v -> KeyboardPrefs.edit(context) { putString("key_push_mode", v) } }
+            SliderItem(
+                icon = Icons.Rounded.Animation, title = "Сплющивание соседей",
+                value = settings.keyPushSquash, range = 0f..0.3f,
+                format = { if (it < 0.01f) tr("Выкл") else "${(it / 0.3f * 100).roundToInt()}%" },
+                onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("key_push_squash", v) } }
+            )
+            SliderItem(
+                icon = Icons.Rounded.Speed, title = "Скорость отталкивания",
+                value = settings.keyPushSpeed, range = 0.5f..2f,
+                format = { String.format("×%.1f", it) },
+                onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("key_push_speed", v) } }
+            )
+        }
         SliderItem(
             icon = Icons.Rounded.Speed, title = "Скорость анимаций",
             value = settings.animSpeed, range = 0.5f..2f,

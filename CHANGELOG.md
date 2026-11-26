@@ -2,6 +2,14 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.26
+- Neighbour push (Settings > Animations > Key press): a pressed key pushes the keys around it away and they spring back like jelly. Off by default (`key_push`). Sliders for push strength, how many rings of keys move, jelly bounce and speed; neighbours can be pushed away, pulled in or swirled, and squashed a little. It only moves the drawing of the keys, the touch areas stay where they are, and nothing runs while no key is pressed
+- Size and position is now grouped: Keys (size and shape), Keyboard frame and margins, Bar above the keys, Keyboard scale (DPI). Letter size, number row height, Enter key width and top bar thickness are also here now
+- Keyboard scale (DPI): an own DPI for the keyboard only (320 to 560 presets and a slider, 120 to 640, `custom_dpi`, 0 = the system value). Everything inside the keyboard rescales by itself
+- Live wallpaper: pick a video from the gallery (up to 60 MB) as a muted looping background under the keys (Colors and background) and behind the Settings pages (Settings home). It replaces the photo while set, pauses when the keyboard is closed and does not play in battery saver. Glass themes do not see through to the video
+- Paste offer above the toolbar: new switch in Settings > Clipboard (`clip_offer_top`). What you just copied shows in its own row above the toolbar instead of replacing it. Off by default
+- Fix: mod fullscreen and landscape mods no longer show a white strip at the screen edge, and the keyboard window now extends under the status bar while a mod is fullscreen
+
 ## 11.2.25
 - Space bar cursor: two new sliders in Settings > Gestures, "Space bar cursor speed" (left and right) and "Up / down cursor speed" (lines), from 0.5x to 3x, default 1x so nothing changes until you move them (`space_cursor_speed`, `space_line_speed`)
 - Fix: the top bar no longer shows the toolbar icons through the suggestions when it switches between them. The old row now fades out before the new one fades in, and the suggestion pills are no longer clipped to square edges during the swap

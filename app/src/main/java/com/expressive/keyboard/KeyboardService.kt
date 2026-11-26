@@ -628,6 +628,9 @@ class ComposeKeyboardService : InputMethodService(),
         }
         inputView = root
         applyWindowColors()
+        serviceScope.launch(Dispatchers.Main) {
+            snapshotFlow { ScriptHost.screenMode == "fullscreen" }.collect { applyFullscreenWindow(it) }
+        }
         return root
     }
 
@@ -824,6 +827,26 @@ class ComposeKeyboardService : InputMethodService(),
         super.onDestroy()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         store.clear()
+    }
+
+    private var appliedFullscreen = false
+
+    /** Mod full screen: the keyboard window may extend under the status bar and cutout (edge to edge). */
+    private fun applyFullscreenWindow(full: Boolean) {
+        if (full == appliedFullscreen) return
+        val w = window?.window ?: return
+        appliedFullscreen = full
+        runCatching {
+            val lp = w.attributes
+            if (full) {
+                w.addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+                lp.height = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                lp.gravity = android.view.Gravity.BOTTOM
+            } else {
+                w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+            }
+            w.attributes = lp
+        }
     }
 
     private fun applyWindowColors() {

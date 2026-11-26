@@ -85,8 +85,8 @@ contain `debug` or `unsigned`, and **Publish** (a pre-release is found too; a dr
 - **Shapes:** lots of shapes, accents only, or no shapes at all (Settings → Colors & background)
 - **App language:** Russian or English
 - **Panels:** emoji, GIFs, clipboard, translator, voice input
-- **Look:** Material You colors, themes and skins, custom fonts (.ttf/.otf), a photo from your gallery behind the keys
-- **Layout:** key height and corner radius, spacing, keyboard width, one-handed mode
+- **Look:** Material You colors, themes and skins, custom fonts (.ttf/.otf), a photo from your gallery behind the keys, or a live video wallpaper; jelly push of the keys around a pressed key
+- **Layout:** key height and corner radius, spacing, keyboard width, one-handed mode, own keyboard DPI, grouped size settings
 - **Feedback:** adjustable vibration and sound
 - **Privacy:** incognito mode; suggestions and dictionary learning are turned off in password fields
 - **Plugins and mods:** custom buttons, shortcuts, layouts, themes and JavaScript scripts that can draw and animate over the keyboard (including GLSL shaders and 3D), play music, press keys, change layouts on the fly and arrange the Settings screen and the toolbar

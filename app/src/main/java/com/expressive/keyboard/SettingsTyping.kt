@@ -463,6 +463,13 @@ internal fun TypingPage(settings: KeyboardSettings, part: SettingsPage) {
         ) {
             KeyboardPrefs.edit(context) { putBoolean("clipboard_history", it) }
         }
+        ToggleItem(
+            Icons.Rounded.ContentPaste, "Вставка над панелью инструментов",
+            "Только что скопированное показывается отдельной строкой над панелью, а не вместо неё. Клавиатура станет выше на время, пока предложение видно",
+            settings.clipOfferTop
+        ) {
+            KeyboardPrefs.edit(context) { putBoolean("clip_offer_top", it) }
+        }
         AnimatedVisibility(settings.clipboardHistory) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 ChoiceItem(
