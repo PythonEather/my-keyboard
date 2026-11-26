@@ -267,6 +267,10 @@ data class KeyboardSettings(
     val showEmojiKey: Boolean = true,
     val showGlobeKey: Boolean = true,
     val pressAnimation: Float = 1f,               // 0 = без анимации нажатия
+    /** How strongly a pressed key changes color / glows: 0 = no color change at all, 1 = as the theme draws it. */
+    val pressHighlight: Float = 1f,
+    /** Soft fade when the key page changes (letters, numbers and symbols): 0 = instant, 1 = a visible dip. */
+    val pageSwitchAnim: Float = 0.5f,
     val panelAnimations: Boolean = true,
     /** Когда работает энергосбережение: SYSTEM — вместе с системой, ALWAYS — всегда, NEVER — никогда. */
     val ecoWhen: String = "SYSTEM",
@@ -631,6 +635,8 @@ object KeyboardPrefs {
             showEmojiKey = p.getBoolean("show_emoji_key", true),
             showGlobeKey = p.getBoolean("show_globe_key", true),
             pressAnimation = p.getFloat("press_animation", 1f).coerceIn(0f, 2f),
+            pressHighlight = p.getFloat("press_highlight", 1f).coerceIn(0f, 1f),
+            pageSwitchAnim = p.getFloat("page_switch_anim", 0.5f).coerceIn(0f, 1f),
             panelAnimations = p.getBoolean("panel_animations", true),
             ecoWhen = p.getString("eco_when", null) ?: if (p.getBoolean("eco_mode", true)) "SYSTEM" else "NEVER",
             ecoPress = p.getBoolean("eco_press", true),
@@ -747,7 +753,7 @@ object KeyboardPrefs {
             "key_height_dp", "header_height_dp", "landscape_scale", "corner_radius_dp", "key_spacing_dp", "row_spacing_dp", "bottom_offset_dp",
             "wave_amplitude_percent", "vibration_ms", "vibration_amplitude", "long_press_ms", "enter_hold_ms", "key_opacity", "bg_transparency", "bg_dim",
             "photo_zoom", "photo_width", "photo_height", "photo_x", "photo_y",
-            "bg_blur_dp", "window_blur_dp", "key_label_scale", "side_padding_dp", "one_handed_w", "float_width", "float_key_height_dp", "flick_sensitivity", "enter_width", "number_row_scale", "press_animation", "sound_volume", "anim_speed"
+            "bg_blur_dp", "window_blur_dp", "key_label_scale", "side_padding_dp", "one_handed_w", "float_width", "float_key_height_dp", "flick_sensitivity", "enter_width", "number_row_scale", "press_animation", "press_highlight", "page_switch_anim", "sound_volume", "anim_speed"
         ).forEach { put(it, 'f') }
         listOf(
             "wave_count", "seed_color", "color_background", "color_key", "color_key_text", "color_func",

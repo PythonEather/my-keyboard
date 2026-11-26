@@ -3,6 +3,8 @@ package com.expressive.keyboard
 // Дополнительные английские и испанские строки. tr() смотрит сюда раньше основных таблиц.
 
 internal val EN_EXTRA: Map<String, String> = hashMapOf(
+    "Плавная смена букв и цифр" to "Soft fade between letters and numbers",
+    "Подсветка нажатой клавиши" to "Pressed key highlight",
     "Свайп по пробелу вверх-вниз" to "Space bar swipe up / down",
     "Ведите палец вверх или вниз — курсор идёт по строкам" to "Drag up or down: the cursor moves between lines",
     "Свайп вверх или вниз меняет язык" to "Swipe up or down changes the language",
@@ -103,6 +105,8 @@ internal val EN_EXTRA: Map<String, String> = hashMapOf(
 )
 
 internal val ES_EXTRA: Map<String, String> = hashMapOf(
+    "Плавная смена букв и цифр" to "Cambio suave entre letras y números",
+    "Подсветка нажатой клавиши" to "Resaltado de la tecla pulsada",
     "Настройка-картинка для модов: { \"type\": \"image\" } даёт кнопку «Выбрать картинку», а kb.config().photo отдаётся шейдеру как текстура" to "Ajuste de imagen para mods: { \"type\": \"image\" } añade un botón «Elegir imagen», y kb.config().photo llega al shader como textura",
     "Выбрать картинку мода" to "Elegir imagen",
     "Сменить картинку мода" to "Cambiar imagen",

@@ -944,14 +944,14 @@ internal fun KeyView(
                 } else {
                     val r = lerpF(rest, fr.second * m, p)
                     val cr = CornerRadius(r, r)
-                    drawRoundRect(color = lerp(colors.bg, colors.activeBg, p), cornerRadius = cr)
+                    drawRoundRect(color = lerp(colors.bg, colors.activeBg, p * PressFx.highlight), cornerRadius = cr)
                     if (border) drawRoundRect(color = borderColor, cornerRadius = cr, style = Stroke(1.dp.toPx()))
                 }
             },
         contentAlignment = Alignment.Center
     ) {
         val st = style
-        val fg = pressedLabelColor(st, colors, pressed)
+        val fg = pressedLabelColor(st, colors, pressed && PressFx.highlight > 0.5f)
         val scale = st?.fontScale ?: 1f
         val custom = st?.label
         val dens = LocalDensity.current.density

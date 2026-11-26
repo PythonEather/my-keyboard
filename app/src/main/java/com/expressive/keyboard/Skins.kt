@@ -782,6 +782,7 @@ internal fun DrawScope.drawSkinKey(
     // тень: нажатая клавиша «прижимается» к фону; свечение у контура горит всегда, у остальных — при нажатии
     val shadow = st.shadow ?: if (material == SkinMaterial.NEUMORPH) 7f else 0f
     val glowPx = 12.dp.toPx()
+    val hl = PressFx.highlight
     val shadowColor = st.shadowColor ?: if (material == SkinMaterial.NEUMORPH) Color.Black.copy(alpha = if (dark) 0.55f else 0.22f)
     else Color.Black.copy(alpha = 0.3f)
     val lightColor = Color.White.copy(alpha = if (dark) 0.11f else 0.75f)
@@ -803,7 +804,7 @@ internal fun DrawScope.drawSkinKey(
             }
         }
         st.glow?.let { g ->
-            val k = if (material == SkinMaterial.OUTLINE) 0.55f + 0.45f * p else p
+            val k = if (material == SkinMaterial.OUTLINE) 0.55f + 0.45f * p * hl else p * hl
             if (k > 0.01f) shadowOn(cv, c, glowPx, 0f, 0f, g.copy(alpha = g.alpha * k))
         }
     }
@@ -829,7 +830,7 @@ internal fun DrawScope.drawSkinKey(
     when (material) {
         SkinMaterial.SOLID, SkinMaterial.NEUMORPH -> {
             drawPath(c.path, c.fill(fill, rect))
-            if (p > 0.001f) drawPath(c.path, c.fill(pressed, rect), alpha = p)
+            if (p > 0.001f && hl > 0.001f) drawPath(c.path, c.fill(pressed, rect), alpha = p * hl)
             if (material == SkinMaterial.NEUMORPH && st.borderWidth == null) {
                 // чёткий край: свет сверху слева, тень снизу справа — клавиша не сливается с фоном
                 val edge = c.brush(Triple("nedge", rect, dark)) {
@@ -846,14 +847,14 @@ internal fun DrawScope.drawSkinKey(
         }
         SkinMaterial.OUTLINE, SkinMaterial.NONE -> {
             st.fill?.let { drawPath(c.path, c.fill(it, rect)) }
-            if (p > 0.001f) drawPath(c.path, c.fill(pressed, rect), alpha = p * if (material == SkinMaterial.NONE) 0.6f else 0.4f)
+            if (p > 0.001f && hl > 0.001f) drawPath(c.path, c.fill(pressed, rect), alpha = p * hl * if (material == SkinMaterial.NONE) 0.6f else 0.4f)
         }
-        SkinMaterial.GLASS -> drawGlass(st, st.glass ?: GlassSpec(), pressed, p, rect, r, c, backdrop, keyPos, dark)
+        SkinMaterial.GLASS -> drawGlass(st, st.glass ?: GlassSpec(), pressed, p, hl, rect, r, c, backdrop, keyPos, dark)
         SkinMaterial.BEVEL -> if (r < 0.5f) {
             // пиксельная кнопка рисуется по целым пикселям сама, вместе с рамкой
-            drawPixelBevel(st, fill, pressed, p, rect, c)
+            drawPixelBevel(st, fill, pressed, p, hl, rect, c)
             return
-        } else drawBevel(st, fill, pressed, p, rect, c)
+        } else drawBevel(st, fill, pressed, p, hl, rect, c)
     }
 
     val bw = st.borderWidth ?: if (material == SkinMaterial.OUTLINE) 1.5f else 0f
@@ -875,11 +876,11 @@ internal fun DrawScope.drawSkinKey(
  * без сглаживания краёв. Раньше текстура обрезалась сглаженным контуром со сдвигом на полпикселя — по краю
  * каждой клавиши шла размытая светлая линия, а поверх лежала толстая обводка: текстура выглядела наклейкой.
  */
-private fun DrawScope.drawPixelBevel(st: KeyStyle, fill: SkinFill, pressed: SkinFill, p: Float, rect0: Rect, c: SkinKeyCache) {
+private fun DrawScope.drawPixelBevel(st: KeyStyle, fill: SkinFill, pressed: SkinFill, p: Float, hl: Float, rect0: Rect, c: SkinKeyCache) {
     val rect = Rect(rect0.left.roundToInt().toFloat(), rect0.top.roundToInt().toFloat(), rect0.right.roundToInt().toFloat(), rect0.bottom.roundToInt().toFloat())
     if (rect.width < 2f || rect.height < 2f) return
     drawRect(c.fill(fill, rect), rect.topLeft, rect.size)
-    if (p > 0.001f) drawRect(c.fill(pressed, rect), rect.topLeft, rect.size, alpha = p)
+    if (p > 0.001f && hl > 0.001f) drawRect(c.fill(pressed, rect), rect.topLeft, rect.size, alpha = p * hl)
     // рамка (если в теме задана) — по внешнему краю, целым числом пикселей
     val bw = st.borderWidth ?: 0f
     var inner = rect
@@ -907,9 +908,9 @@ private fun DrawScope.drawPixelBevel(st: KeyStyle, fill: SkinFill, pressed: Skin
 }
 
 /** Объёмная кнопка из пикселей: светлая кромка сверху и слева, тёмная снизу и справа; при нажатии — наоборот. */
-private fun DrawScope.drawBevel(st: KeyStyle, fill: SkinFill, pressed: SkinFill, p: Float, rect: Rect, c: SkinKeyCache) {
+private fun DrawScope.drawBevel(st: KeyStyle, fill: SkinFill, pressed: SkinFill, p: Float, hl: Float, rect: Rect, c: SkinKeyCache) {
     drawPath(c.path, c.fill(fill, rect))
-    if (p > 0.001f) drawPath(c.path, c.fill(pressed, rect), alpha = p)
+    if (p > 0.001f && hl > 0.001f) drawPath(c.path, c.fill(pressed, rect), alpha = p * hl)
     val b = (st.bevel ?: 2.5f).dp.toPx()
     val light = Color.White.copy(alpha = 0.42f)
     val dark = Color.Black.copy(alpha = 0.38f)
@@ -930,6 +931,7 @@ private fun DrawScope.drawGlass(
     g: GlassSpec,
     pressed: SkinFill,
     p: Float,
+    ph: Float,
     rect: Rect,
     r: Float,
     c: SkinKeyCache,
@@ -937,12 +939,12 @@ private fun DrawScope.drawGlass(
     keyPos: () -> Offset?,
     dark: Boolean
 ) {
-    if (g.opacity >= 0.99f) return drawGlassBody(st, g, pressed, p, rect, r, c, backdrop, keyPos, dark)
+    if (g.opacity >= 0.99f) return drawGlassBody(st, g, pressed, p, ph, rect, r, c, backdrop, keyPos, dark)
     // клавиша целиком полупрозрачная: рисуем в слой и накладываем с нужной непрозрачностью
     val paint = Paint().apply { alpha = g.opacity.coerceIn(0f, 1f) }
     drawIntoCanvas { cv ->
         cv.saveLayer(rect.inflate(4f), paint)
-        drawGlassBody(st, g, pressed, p, rect, r, c, backdrop, keyPos, dark)
+        drawGlassBody(st, g, pressed, p, ph, rect, r, c, backdrop, keyPos, dark)
         cv.restore()
     }
 }
@@ -952,6 +954,7 @@ private fun DrawScope.drawGlassBody(
     g: GlassSpec,
     pressed: SkinFill,
     p: Float,
+    ph: Float,
     rect: Rect,
     r: Float,
     c: SkinKeyCache,
@@ -1015,7 +1018,7 @@ private fun DrawScope.drawGlassBody(
         }
         for (k in 1..3) drawPath(c.path, brush, alpha = 0.4f, style = Stroke(w * k / 3f))
     }
-    if (p > 0.001f) drawPath(c.path, c.fill(pressed, rect), alpha = 0.55f * p)
+    if (p > 0.001f && ph > 0.001f) drawPath(c.path, c.fill(pressed, rect), alpha = 0.55f * p * ph)
     // жидкое стекло светится там, где палец: блик «перетекает» к точке нажатия
     val t = c.touch
     if (p > 0.01f && t != null) {

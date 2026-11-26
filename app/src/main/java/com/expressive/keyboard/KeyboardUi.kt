@@ -722,6 +722,7 @@ internal fun KeyboardScreen(
         }
         GlideTrailLayer(glide, trailColor, settings.glideTrail)
         DynamicShadowEffect(settings.dynamicShadow)
+        PressHighlightEffect(settings.pressHighlight)
         ScriptOverlayLayer()
         if (fullscreen) {
             ScreenPanelLayer(if (showKeys) keysPx else 0, palette, font)
@@ -852,7 +853,22 @@ internal fun KeyGrid(
     val dense = page == 0 && rows.any { r -> r.keys.count { it.type == KeyType.CHARACTER } >= 11 }
     val hSpace = (if (dense) min(settings.keySpacingDp, 4f) else settings.keySpacingDp).dp
 
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(settings.rowSpacingDp.dp)) {
+    // soft fade when the page changes (letters / numbers / symbols): one layer, no second copy of the keys
+    val pageFade = remember { Animatable(1f) }
+    val pageId = if (state.numberPad) -1 else page
+    var shownPage by remember { mutableIntStateOf(pageId) }
+    LaunchedEffect(pageId) {
+        if (pageId == shownPage) return@LaunchedEffect
+        shownPage = pageId
+        val strength = if (settings.panelAnimations) settings.pageSwitchAnim else 0f
+        if (strength < 0.05f || state.instantUi) { pageFade.snapTo(1f); return@LaunchedEffect }
+        pageFade.snapTo(1f - 0.5f * strength)
+        pageFade.animateTo(1f, tween((140 / settings.animSpeed).toInt().coerceIn(70, 280), easing = FastOutSlowInEasing))
+    }
+    Column(
+        Modifier.fillMaxSize().graphicsLayer { alpha = pageFade.value },
+        verticalArrangement = Arrangement.spacedBy(settings.rowSpacingDp.dp)
+    ) {
         rows.forEach { row ->
             val isNumberRow = row.heightWeight == KeyboardLayouts.NUMBER_ROW_WEIGHT
             Row(Modifier.fillMaxWidth().weight(if (isNumberRow) settings.numberRowScale else row.heightWeight), horizontalArrangement = Arrangement.spacedBy(hSpace)) {

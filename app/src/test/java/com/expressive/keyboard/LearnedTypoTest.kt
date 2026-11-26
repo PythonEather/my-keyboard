@@ -25,4 +25,26 @@ class LearnedTypoTest {
         assertNull(WordPredictorEngine.autoCorrectionFor("привит", ru, "NORMAL"))
         WordPredictorEngine.clearUserData()
     }
+
+    /** Undoing the same autocorrection twice with backspace makes the keyboard leave that word alone for good. */
+    @Test
+    fun twoUndosStopTheCorrectionForGood() {
+        val ru = Languages.RU
+        val dict = File("src/main/assets/dict/ru.txt").readLines().map { it.trim() }.filter { it.isNotEmpty() }
+        WordPredictorEngine.installDictionary(ru, dict, emptyList(), emptyMap())
+        WordPredictorEngine.clearUserData()
+        WordPredictorEngine.clearRejections()
+        assertEquals("привет", WordPredictorEngine.autoCorrectionFor("привит", ru, "NORMAL"))
+        // first undo: the correction pauses, but after the pause it comes back
+        WordPredictorEngine.rejectCorrection(ru, "привит")
+        WordPredictorEngine.learn(ru, "", "привит", WordPredictorEngine.UNDO_BOOST)
+        WordPredictorEngine.clearRejections()
+        assertEquals("привет", WordPredictorEngine.autoCorrectionFor("привит", ru, "NORMAL"))
+        // second undo of the same word: it is learned, so it is not corrected even after the pause
+        WordPredictorEngine.rejectCorrection(ru, "привит")
+        WordPredictorEngine.learn(ru, "", "привит", WordPredictorEngine.UNDO_BOOST)
+        WordPredictorEngine.clearRejections()
+        assertNull(WordPredictorEngine.autoCorrectionFor("привит", ru, "NORMAL"))
+        WordPredictorEngine.clearUserData()
+    }
 }

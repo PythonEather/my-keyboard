@@ -1909,9 +1909,10 @@ class ComposeKeyboardService : InputMethodService(),
             icSetComposing(ic, u.originalWord)
             ic.endBatchEdit()
             undo = null
-            // отменённое исправление какое-то время не повторяется; навсегда слово не запоминается — ⌫ часто жмут
-            // не ради отмены, и одной случайной отмены хватало, чтобы опечатка («привит») больше не исправлялась
+            // отменённое исправление какое-то время не повторяется. Одна отмена слово навсегда не запоминает (⌫ часто
+            // жмут не ради отмены), но вторая отмена того же слова выучивает его: клавиатура больше его не исправляет
             WordPredictorEngine.rejectCorrection(kb.language, u.originalWord)
+            learn("", u.originalWord, WordPredictorEngine.UNDO_BOOST)
             schedulePredictions()
             return
         }

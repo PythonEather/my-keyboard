@@ -25,6 +25,7 @@
 - Plugin permission `toolbar_layout`: a plugin can reorder and hide the buttons of the keyboard toolbar
 - Security: red dot while a plugin uses a sensitive permission, and a reminder banner every few minutes (can be switched off)
 - Import and export of custom animations; export of plugins (JSON and script)
+- Press highlight slider (turn the color change of a pressed key down or off) and a soft fade between letters, numbers and symbols
 - Your own plugins can live in [`plugins/`](plugins): the GitHub build runs each one in a Node mock of `kb` and compiles its shaders, so a broken plugin fails the build before you install it
 
 **Look**
@@ -76,7 +77,7 @@ contain `debug` or `unsigned`, and **Publish** (a pre-release is found too; a dr
 
 ## Features
 
-- **Typing:** word suggestions, autocorrect, glide (swipe) typing
+- **Typing:** word suggestions, autocorrect that learns from your undos (undo the same correction twice and the word is left alone), glide (swipe) typing
 - **Languages:** 90+ layouts; Chinese (Pinyin, simplified and traditional) and Japanese (Romaji → Kana) input; Indic scripts (InScript)
 - **Emoji:** all Unicode 16 emoji, search in English and Russian, skin tones, built-in styles (Twemoji, Noto, Blob, OpenMoji)
 - **First-run setup:** new users pick a theme, how many expressive shapes they want and which features to keep

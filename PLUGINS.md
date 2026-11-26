@@ -1081,7 +1081,7 @@ They are applied by the "Apply look" button. The keys are the same as in the set
 ```
 
 Floating-point numbers: `key_height_dp`, `corner_radius_dp`, `key_spacing_dp`, `row_spacing_dp`, `bottom_offset_dp`,
-`side_padding_dp`, `key_label_scale`, `key_opacity`, `press_animation`, `long_press_ms`, `vibration_ms`,
+`side_padding_dp`, `key_label_scale`, `key_opacity`, `press_animation`, `press_highlight`, `page_switch_anim`, `long_press_ms`, `vibration_ms`,
 `vibration_amplitude`, `bg_dim`, `bg_blur_dp`, `one_handed_width`, `wave_amplitude_percent`, `sound_volume`.
 Integers and colors (`"#hex"`): `color_background`, `color_key`, `color_key_text`, `color_func`, `color_func_text`,
 `color_accent`, `color_accent_text`, `seed_color`, `wave_count`, `font_weight`, `clipboard_size`.

@@ -2,6 +2,18 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.23
+- Pressed key highlight: new slider in Settings > Animations > Key press (`press_highlight`, 0 to 1). It scales the color change and the glow of a pressed key for the plain keys and for every theme material (solid, neumorph, outline, glass, bevel, pixel). At Off the key keeps its resting color and the label color does not flip; the press animation itself still plays
+- Soft fade between letters, numbers and symbols: new slider in Settings > Animations > Panels (`page_switch_anim`, default 50%). When the key page or the number pad changes, the keys fade from a lighter state back to full in about 140 ms (scaled by the animation speed). It is one layer, not a second copy of the keys, so it costs nothing while typing. Off, or the panel animations switch turned off, gives an instant swap
+- Autocorrect memory: undoing an autocorrection with backspace now counts toward learning the word (`WordPredictorEngine.UNDO_BOOST`). A word that looks like a typo of a common word is learned after two undos and is then left alone for good, even after the 10 minute pause; a single undo still only pauses the correction. Words that do not look like a typo (names, slang) are learned after one undo. Nothing is learned in incognito mode or in password fields, as before
+- New test `LearnedTypoTest.twoUndosStopTheCorrectionForGood`
+- `PLUGINS.md` (settings keys) and `README.md` updated
+
+## 11.2.22
+- Space bar: new "Swipe up / down" setting (Settings > Gestures > Space): move the cursor between lines or change the language.
+- Fast typing: stray symbols like * and # no longer appear when your finger flicks while typing quickly.
+- Effects mod: sparks are now off by default and fully customizable (amount, size, colors, fall, lifetime, speed), with new Sparks, Sand and Snow presets.
+
 ## 11.2.21
 - Fix: swipe typing no longer leaves the first key stretched and pressed (with its popup) for the whole swipe; the key is released as soon as the swipe starts
 - Incognito: the keyboard now honors the app's own "no personalized learning" flag (private tabs in browsers): nothing is learned, mods see no text, system spellcheck stays off, and the incognito icon shows on the menu button and the space bar. The manual incognito toggle shows the same icon

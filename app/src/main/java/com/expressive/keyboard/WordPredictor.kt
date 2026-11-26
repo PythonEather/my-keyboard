@@ -996,6 +996,12 @@ object WordPredictorEngine {
      * раньше одной отмены исправления ⌫ хватало, чтобы опечатка навсегда перестала исправляться.
      */
     const val LEARNED_TYPO = 8
+    /**
+     * One undo of an autocorrection with backspace adds this much to the word's count. For a word that looks like
+     * a typo of a common word, two undos reach [LEARNED_TYPO], so a word you keep undoing stops being corrected for
+     * good; a single accidental undo only pauses the correction for a while (see [rejectCorrection]).
+     */
+    const val UNDO_BOOST = LEARNED_TYPO / 2
     private val typoLike = ConcurrentHashMap<String, Boolean>()
 
     /** Слово выучено: набрано достаточно раз (опечатке частого слова — заметно больше). */

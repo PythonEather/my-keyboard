@@ -466,6 +466,12 @@ internal fun AnimationsPage(settings: KeyboardSettings) {
             onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("press_animation", if (v < 0.05f) 0f else v) } }
         )
         SliderItem(
+            icon = Icons.Rounded.Animation, title = "Подсветка нажатой клавиши",
+            value = settings.pressHighlight, range = 0f..1f,
+            format = { if (it < 0.05f) tr("Выкл") else "${(it * 100).roundToInt()}%" },
+            onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("press_highlight", if (v < 0.05f) 0f else v) } }
+        )
+        SliderItem(
             icon = Icons.Rounded.Speed, title = "Скорость анимаций",
             value = settings.animSpeed, range = 0.5f..2f,
             format = { String.format("×%.1f", it) },
@@ -519,6 +525,12 @@ internal fun AnimationsPage(settings: KeyboardSettings) {
         ActionItem(Icons.Rounded.Tune, "Настроить переход панелей", "Время, размер, сдвиг и упругость — ползунками, с показом", onClick = {
             editingTransition = "panel"
         })
+        SliderItem(
+            icon = Icons.Rounded.Layers, title = "Плавная смена букв и цифр",
+            value = settings.pageSwitchAnim, range = 0f..1f,
+            format = { if (it < 0.05f) tr("Выкл") else "${(it * 100).roundToInt()}%" },
+            onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("page_switch_anim", if (v < 0.05f) 0f else v) } }
+        )
     }
     SettingsSection("Открытие клавиатуры") {
         ChoiceItem(
