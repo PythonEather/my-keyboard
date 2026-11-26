@@ -7,8 +7,9 @@ so run `bash tools/timeline.sh` after raising `versionName` in `app/build.gradle
 <!-- timeline:start -->
 | Version | Date | Commit | Commit message |
 |---|---|---|---|
-| 11.2.23 | 2026-11-26 | _not committed yet_ | |
+| 11.2.23 | 2026-11-26 | `e220938` | 11.2.23 |
 | 11.2.22 | 2026-11-26 | `5993ca7` | 11.2.22: space swipe up/down, fast typing fix, sand effect settings |
+| 11.2.21 | 2026-11-25 | `10b7c43` | Release 11.2.21: glide fix, incognito flag, animation packs, panel and open transitions |
 | 11.2.20 | 2026-11-25 | `6930383` | 11.2.20: built-in 3D engine |
 | 11.2.19 | 2026-11-25 | `a243fc0` | 11.2.19: fix Lua mods in the release app |
 | 11.2.18 | 2026-11-25 | `8e80e32` | 11.2.18: Lua 5.4 script engine |
