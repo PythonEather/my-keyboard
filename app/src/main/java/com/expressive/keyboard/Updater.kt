@@ -195,8 +195,10 @@ object Updater {
         error = null
         progress = 0f
         try {
-            val file = withContext(Dispatchers.IO) { download(context, info) }
-            // не тот пакет или версия не новее: система только написала бы «приложение не установлено», без причины
+            // файл уже скачан (например, окно установки закрыли касанием снаружи): ставим его, не качая заново
+            val kept = withContext(Dispatchers.IO) { downloaded(context, info) }
+            val file = kept ?: withContext(Dispatchers.IO) { download(context, info) }
+            // не тот пакет, не тот ключ или версия не новее: система только написала бы «приложение не установлено», без причины
             val bad = checkApk(context, file)
             if (bad != null) {
                 file.delete()
@@ -215,12 +217,37 @@ object Updater {
         }
     }
 
+    /** Уже скачанный и целый APK этой версии из кэша или null. Файл остаётся до следующего обновления. */
+    private fun downloaded(context: Context, info: UpdateInfo): File? {
+        val f = File(File(context.cacheDir, "updates"), "ExpressiveKeyboard-${info.version}.apk")
+        if (!f.isFile || f.length() == 0L) return null
+        if (info.size > 0 && f.length() != info.size) return null
+        return if (checkApk(context, f) == null) f else null
+    }
+
+    /** SHA-256 сертификатов, которыми подписан пакет (пусто, если система их не отдала). */
+    private fun signers(pi: android.content.pm.PackageInfo): Set<String> {
+        @Suppress("DEPRECATION")
+        val sigs: Array<android.content.pm.Signature>? =
+            if (Build.VERSION.SDK_INT >= 28) pi.signingInfo?.apkContentsSigners else pi.signatures
+        val md = { b: ByteArray -> java.security.MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) } }
+        return sigs?.map { md(it.toByteArray()) }?.toSet() ?: emptySet()
+    }
+
     /** Текст ошибки, если скачанный файл не подходит для обновления этого приложения, иначе null. */
     private fun checkApk(context: Context, file: File): String? {
         val pm = context.packageManager
-        val archive = pm.getPackageArchiveInfo(file.absolutePath, 0) ?: return tr("Скачанный файл — не APK или повреждён")
+        @Suppress("DEPRECATION")
+        val flags = if (Build.VERSION.SDK_INT >= 28) android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES else android.content.pm.PackageManager.GET_SIGNATURES
+        val archive = pm.getPackageArchiveInfo(file.absolutePath, flags) ?: return tr("Скачанный файл — не APK или повреждён")
         if (archive.packageName != context.packageName) return tr("Скачанный APK — другое приложение, им это не обновить")
-        val installed = runCatching { pm.getPackageInfo(context.packageName, 0) }.getOrNull() ?: return null
+        val installed = runCatching { pm.getPackageInfo(context.packageName, flags) }.getOrNull() ?: return null
+        // другой ключ подписи: Android откажет с общим «не удалось установить», пока не удалить старую версию
+        val a = signers(archive)
+        val b = signers(installed)
+        if (a.isNotEmpty() && b.isNotEmpty() && a != b) {
+            return tr("Обновление подписано другим ключом, чем установленное приложение. Удалите приложение и поставьте новую версию заново")
+        }
         if (androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(archive) <= androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(installed)) {
             return tr("В скачанном APK версия не новее установленной")
         }
@@ -229,8 +256,9 @@ object Updater {
 
     private fun download(context: Context, info: UpdateInfo): File {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-        dir.listFiles()?.forEach { it.delete() }
         val out = File(dir, "ExpressiveKeyboard-${info.version}.apk")
+        dir.listFiles()?.forEach { if (it.name != out.name) it.delete() }
+        out.delete()
         var url = URL(info.apkUrl)
         // GitHub отдаёт файл через переадресацию на другой адрес — идём по ней сами
         var conn: HttpURLConnection

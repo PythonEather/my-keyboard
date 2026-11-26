@@ -181,6 +181,8 @@ data class KeyboardSettings(
     val enterHoldSend: Boolean = true,
     val enterHoldMs: Float = 550f,
     val flickSensitivity: Float = 0.5f,
+    val spaceCursorSpeed: Float = 1f,             // скорость курсора при свайпе по пробелу влево-вправо (1 = как раньше)
+    val spaceLineSpeed: Float = 1f,               // то же при свайпе вверх-вниз
     val fontStyle: String = "ROUNDED",
     val customFontName: String = "",
     val customFontVersion: Long = 0L,
@@ -572,6 +574,8 @@ object KeyboardPrefs {
             enterHoldSend = p.getBoolean("enter_hold_send", true),
             enterHoldMs = p.getFloat("enter_hold_ms", 550f).coerceIn(300f, 1500f),
             flickSensitivity = p.getFloat("flick_sensitivity", 0.5f).coerceIn(0f, 1f),
+            spaceCursorSpeed = p.getFloat("space_cursor_speed", 1f).coerceIn(0.5f, 3f),
+            spaceLineSpeed = p.getFloat("space_line_speed", 1f).coerceIn(0.5f, 3f),
             fontStyle = if (font == null || font == "DEFAULT") "ROUNDED" else font,
             customFontName = p.getString("custom_font_name", "") ?: "",
             customFontVersion = p.getLong("custom_font_version", 0L),
@@ -753,7 +757,7 @@ object KeyboardPrefs {
             "key_height_dp", "header_height_dp", "landscape_scale", "corner_radius_dp", "key_spacing_dp", "row_spacing_dp", "bottom_offset_dp",
             "wave_amplitude_percent", "vibration_ms", "vibration_amplitude", "long_press_ms", "enter_hold_ms", "key_opacity", "bg_transparency", "bg_dim",
             "photo_zoom", "photo_width", "photo_height", "photo_x", "photo_y",
-            "bg_blur_dp", "window_blur_dp", "key_label_scale", "side_padding_dp", "one_handed_w", "float_width", "float_key_height_dp", "flick_sensitivity", "enter_width", "number_row_scale", "press_animation", "press_highlight", "page_switch_anim", "sound_volume", "anim_speed"
+            "bg_blur_dp", "window_blur_dp", "key_label_scale", "side_padding_dp", "one_handed_w", "float_width", "float_key_height_dp", "flick_sensitivity", "space_cursor_speed", "space_line_speed", "enter_width", "number_row_scale", "press_animation", "press_highlight", "page_switch_anim", "sound_volume", "anim_speed"
         ).forEach { put(it, 'f') }
         listOf(
             "wave_count", "seed_color", "color_background", "color_key", "color_key_text", "color_func",

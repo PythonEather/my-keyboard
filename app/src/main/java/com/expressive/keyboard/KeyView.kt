@@ -523,6 +523,9 @@ internal fun KeyView(
                                 var axis = 0
                                 var vLast = down.position.y
                                 var vLangDone = false
+                                // скорость курсора из настроек: чем она больше, тем короче путь пальца до одного шага
+                                val cStep = cursorStep / cSettings.spaceCursorSpeed
+                                val lStep = lineStep / cSettings.spaceLineSpeed
                                 Rollover.press(holder) {
                                     if (!swiped && !picker && !rolled) {
                                         rolled = true
@@ -573,12 +576,12 @@ internal fun KeyView(
                                         }
                                         if (axis == 2) {
                                             if (vMode == "CURSOR") {
-                                                while (ch.position.y - vLast > lineStep) {
-                                                    vLast += lineStep
+                                                while (ch.position.y - vLast > lStep) {
+                                                    vLast += lStep
                                                     act.spaceCursorLine(1)
                                                 }
-                                                while (vLast - ch.position.y > lineStep) {
-                                                    vLast -= lineStep
+                                                while (vLast - ch.position.y > lStep) {
+                                                    vLast -= lStep
                                                     act.spaceCursorLine(-1)
                                                 }
                                             } else if (vMode == "LANGUAGE" && !vLangDone && abs(dy) > swipe) {
@@ -602,12 +605,12 @@ internal fun KeyView(
                                                 lastX = ch.position.x
                                             } else if (!swiped && abs(dx) > slop) langIntent = true
                                             if (cursorMode) {
-                                                while (ch.position.x - lastX > cursorStep) {
-                                                    lastX += cursorStep
+                                                while (ch.position.x - lastX > cStep) {
+                                                    lastX += cStep
                                                     act.spaceCursor(1)
                                                 }
-                                                while (lastX - ch.position.x > cursorStep) {
-                                                    lastX -= cursorStep
+                                                while (lastX - ch.position.x > cStep) {
+                                                    lastX -= cStep
                                                     act.spaceCursor(-1)
                                                 }
                                             } else if (!swiped && langIntent && abs(dx) > swipe) {
@@ -627,12 +630,12 @@ internal fun KeyView(
                                                 Rollover.done(holder)
                                             }
                                             if (swiped) {
-                                                while (ch.position.x - lastX > cursorStep) {
-                                                    lastX += cursorStep
+                                                while (ch.position.x - lastX > cStep) {
+                                                    lastX += cStep
                                                     act.spaceCursor(1)
                                                 }
-                                                while (lastX - ch.position.x > cursorStep) {
-                                                    lastX -= cursorStep
+                                                while (lastX - ch.position.x > cStep) {
+                                                    lastX -= cStep
                                                     act.spaceCursor(-1)
                                                 }
                                             }

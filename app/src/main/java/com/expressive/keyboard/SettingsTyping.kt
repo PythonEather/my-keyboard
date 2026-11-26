@@ -207,6 +207,18 @@ internal fun TypingPage(settings: KeyboardSettings, part: SettingsPage) {
             },
             listOf("OFF" to "Выкл", "CURSOR" to "Курсор", "LANGUAGE" to "Язык"), settings.spaceSwipeVertical
         ) { v -> KeyboardPrefs.edit(context) { putString("space_swipe_vertical", v) } }
+        SliderItem(
+            icon = Icons.Rounded.Swipe, title = "Скорость курсора по пробелу",
+            value = settings.spaceCursorSpeed, range = 0.5f..3f, steps = 24,
+            format = { "${(it * 10).roundToInt() / 10f}×" },
+            onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("space_cursor_speed", v) } }
+        )
+        SliderItem(
+            icon = Icons.Rounded.Swipe, title = "Скорость курсора вверх-вниз",
+            value = settings.spaceLineSpeed, range = 0.5f..3f, steps = 24,
+            format = { "${(it * 10).roundToInt() / 10f}×" },
+            onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("space_line_speed", v) } }
+        )
         val spaceActions = listOf(
             "PICKER" to "Выбор клавиатуры", "LANGUAGE" to "Смена языка", "AI_FIX" to "Улучшить текст", "VOICE" to "Голосовой ввод", "EMOJI" to "Эмодзи",
             "CLIPBOARD" to "Буфер обмена", "TOOLBAR" to "Панель функций", "SETTINGS" to "Настройки", "OFF" to "Ничего"

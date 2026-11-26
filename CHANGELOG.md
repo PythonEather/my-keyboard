@@ -2,6 +2,16 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.25
+- Space bar cursor: two new sliders in Settings > Gestures, "Space bar cursor speed" (left and right) and "Up / down cursor speed" (lines), from 0.5x to 3x, default 1x so nothing changes until you move them (`space_cursor_speed`, `space_line_speed`)
+- Fix: the top bar no longer shows the toolbar icons through the suggestions when it switches between them. The old row now fades out before the new one fades in, and the suggestion pills are no longer clipped to square edges during the swap
+- Updater: the downloaded update stays on the phone. If you tap outside the install window, tap Update again and the installer opens right away, with no new download. A half-finished download is detected and started over
+- Updater: if the update is signed with a different key than the installed app, you now get a clear message instead of Android's "Couldn't install the update". The fix is to uninstall the app and install the new version again
+- Updater: the three file check messages now have English and Spanish text, they were Russian only
+
+## 11.2.24
+- Lua mods: values now go to Kotlin as Java objects instead of JSON text (about 7 to 9 times faster on big tables)
+
 ## 11.2.23
 - Pressed key highlight: new slider in Settings > Animations > Key press (`press_highlight`, 0 to 1). It scales the color change and the glow of a pressed key for the plain keys and for every theme material (solid, neumorph, outline, glass, bevel, pixel). At Off the key keeps its resting color and the label color does not flip; the press animation itself still plays
 - Soft fade between letters, numbers and symbols: new slider in Settings > Animations > Panels (`page_switch_anim`, default 50%). When the key page or the number pad changes, the keys fade from a lighter state back to full in about 140 ms (scaled by the animation speed). It is one layer, not a second copy of the keys, so it costs nothing while typing. Off, or the panel animations switch turned off, gives an instant swap

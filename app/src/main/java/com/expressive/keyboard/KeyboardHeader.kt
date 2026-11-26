@@ -273,7 +273,9 @@ internal fun HeaderBar(
                     transitionSpec = {
                         // окно только появилось — без анимации; иначе короткое проявление
                         if (state.instantUi) EnterTransition.None togetherWith ExitTransition.None
-                        else fadeIn(tween(120)) togetherWith fadeOut(tween(70))
+                        // старая строка гаснет ДО того, как проявляется новая: раньше обе шли одновременно, и иконки панели
+                        // просвечивали сквозь подсказки; без обрезки по размеру углы плашек остаются скруглёнными
+                        else (fadeIn(tween(100, delayMillis = 70)) togetherWith fadeOut(tween(70))) using SizeTransform(clip = false)
                     },
                     label = "headerSwap"
                 ) { m -> content(m) }
