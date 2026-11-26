@@ -2,11 +2,24 @@ package com.expressive.keyboard
 
 import android.content.res.AssetManager
 import android.os.SystemClock
-import org.json.JSONArray
-import org.json.JSONObject
 import org.mozilla.javascript.Undefined
 import java.lang.ref.ReferenceQueue
 import java.lang.ref.WeakReference
+
+// Values cross the Lua boundary as plain Java objects (plugin_lua.c converts them with JNI, no JSON text):
+//   null, String, Boolean, Double      as they are
+//   Array<Any?>                        a list
+//   LuaMap                             a table: key0, value0, key1, value1, ...
+//   LuaHostRef                         a keyboard function the script can call
+//   LuaFnRef                           a Lua function, called back by id
+//   LuaJsonText                        JSON text that Lua parses into plain tables
+//   LuaHostError                       a keyboard function that threw (returned to Lua, which raises the error)
+// The native code looks these classes and their fields up by name: keep them in proguard-rules.pro.
+internal class LuaMap(@JvmField val flat: Array<Any?>)
+internal class LuaHostRef(@JvmField val id: Int, @JvmField val name: String)
+internal class LuaFnRef(@JvmField val id: Int)
+internal class LuaJsonText(@JvmField val text: String)
+internal class LuaHostError(@JvmField val message: String)
 
 internal class LuaPluginRuntime(private val assets: AssetManager) : PluginScriptRuntime {
     private var handle = nativeCreate().also { check(it != 0L) { "Could not create Lua runtime" } }
@@ -26,7 +39,7 @@ internal class LuaPluginRuntime(private val assets: AssetManager) : PluginScript
     override fun load(bindings: Map<String, Any?>, prelude: String, source: String, filename: String) {
         val bootstrap = assets.open("lua/plugin-bridge.lua").bufferedReader().use { it.readText() }
         run(BOOTSTRAP, bootstrap, "lua-bridge.lua")
-        dispatch("install", encode(bindings))
+        install(encode(bindings))
         // the JavaScript prelude passed in is for JS engines: a Lua plugin gets its own helpers
         val luaPrelude = assets.open("lua/prelude.lua").bufferedReader().use { it.readText() }
         run(EVAL, luaPrelude, "kb-prelude.lua")
@@ -36,15 +49,20 @@ internal class LuaPluginRuntime(private val assets: AssetManager) : PluginScript
     override fun call(function: PluginScriptFunction, args: Array<out Any?>, readResult: Boolean): Any? {
         val callback = function as Callback
         check(callback.belongsTo(this))
-        val expired = JSONArray()
+        val expired = ArrayList<Int>()
         while (true) {
             val ref = collectedFunctions.poll() as? CallbackRef ?: break
             if (callbacks[ref.id] === ref) {
                 callbacks.remove(ref.id)
-                expired.put(ref.id)
+                expired.add(ref.id)
             }
         }
-        return decode(dispatch("call", callback.id, encode(args.asList()), expired, readResult), topLevel = true)
+        val encoded = Array(args.size) { encode(args[it]) }
+        val remaining = remainingBudget()
+        val response = nativeCall(
+            handle, callback.id, encoded, if (expired.isEmpty()) null else expired.toIntArray(), readResult, remaining,
+        ) ?: throw ScriptTimeout()
+        return decode(response[0])
     }
 
     override fun <T> execute(budgetMs: Long, block: () -> T): T {
@@ -70,84 +88,89 @@ internal class LuaPluginRuntime(private val assets: AssetManager) : PluginScript
         callbacks.clear()
     }
 
-    private fun dispatch(vararg command: Any?): Any? {
-        val response = run(DISPATCH, JSONArray(command.asList()).toString(), "lua-bridge.lua")
-        return JSONArray(response).get(0)
+    private fun remainingBudget(): Long {
+        val remaining = deadline - SystemClock.uptimeMillis()
+        if (remaining <= 0) throw ScriptTimeout()
+        return remaining
+    }
+
+    private fun install(encodedBindings: Any?) {
+        if (!nativeInstall(handle, encodedBindings, remainingBudget())) throw ScriptTimeout()
     }
 
     private fun run(mode: Int, source: String, filename: String): String {
-        val remaining = deadline - SystemClock.uptimeMillis()
-        if (remaining <= 0) throw ScriptTimeout()
-        val response = nativeRun(handle, mode, source.toByteArray(), filename, remaining) ?: throw ScriptTimeout()
+        val response = nativeRun(handle, mode, source.toByteArray(), filename, remainingBudget()) ?: throw ScriptTimeout()
         val result = response.decodeToString(startIndex = 1)
         if (response[0].toInt() != 0) throw IllegalStateException(result)
         return result
     }
 
     @Suppress("unused") // Called synchronously by the native runtime on the keyboard thread.
-    private fun dispatchHost(id: Int, payload: ByteArray): ByteArray {
-        val reply = try {
-            val args = JSONArray(payload.decodeToString())
-            val values = Array(args.length()) { decode(args.get(it), topLevel = true) }
-            tag(true, encode(bindings[id].invoke(values)))
+    private fun dispatchHost(id: Int, args: Array<Any?>): Any? {
+        return try {
+            val values = Array(args.size) { decode(args[it]) }
+            encode(bindings[id].invoke(values))
         } catch (timeout: ScriptTimeout) {
             throw timeout
         } catch (error: Exception) {
-            tag(false, error.message ?: error.javaClass.simpleName)
+            LuaHostError(error.message ?: error.javaClass.simpleName)
         }
-        return reply.toString().toByteArray()
     }
 
-    private fun encode(value: Any?, depth: Int = 0): Any = when {
-        value == null || depth > 32 -> JSONObject.NULL
-        value is Unit || value is Undefined -> tag("u")
+    private fun encode(value: Any?, depth: Int = 0): Any? = when {
+        value == null || depth > 32 -> null
+        value is Unit || value is Undefined -> null
         value is String || value is Boolean -> value
-        value is Number -> value.toDouble().let { if (it.isFinite()) it else tag("n", it.toString()) }
-        value is ScriptBinding -> tag("b", bindings.size.also { bindings += value }, value.name)
-        value is ScriptJson -> tag("j", value.source)
-        value is Callback && value.belongsTo(this) -> tag("f", value.id)
-        value is PluginScriptFunction -> JSONObject.NULL
-        value is List<*> -> tag("a", JSONArray(value.map { encode(it, depth + 1) }))
-        value is Map<*, *> -> tag("o", JSONArray(value.map { (key, item) ->
-            tag(key.toString(), encode(item, depth + 1))
-        }))
+        value is Number -> value.toDouble()
+        value is ScriptBinding -> LuaHostRef(bindings.size.also { bindings += value }, value.name)
+        value is ScriptJson -> LuaJsonText(value.source)
+        value is Callback && value.belongsTo(this) -> LuaFnRef(value.id)
+        value is PluginScriptFunction -> null
+        value is List<*> -> Array(value.size) { encode(value[it], depth + 1) }
+        value is Map<*, *> -> {
+            val flat = arrayOfNulls<Any?>(value.size * 2)
+            var i = 0
+            for ((key, item) in value) {
+                flat[i++] = key.toString()
+                flat[i++] = encode(item, depth + 1)
+            }
+            LuaMap(flat)
+        }
         else -> value.toString()
     }
 
-    private fun decode(value: Any?, topLevel: Boolean = false): Any? = when (value) {
-        null, JSONObject.NULL -> null
-        is Number -> value.toDouble()
-        is JSONArray -> when (value.getString(0)) {
-            "u" -> if (topLevel) Undefined.instance else null
-            "n" -> value.getString(1).toDouble()
-            "f" -> {
-                val id = value.getInt(1)
-                callbacks[id]?.get() ?: Callback(id).also { callbacks[id] = CallbackRef(id, it, collectedFunctions) }
-            }
-            "a" -> value.getJSONArray(1).let { array -> List(array.length()) { decode(array.get(it)) } }
-            "o" -> value.getJSONArray(1).let { entries ->
-                buildMap {
-                    for (i in 0 until entries.length()) {
-                        val entry = entries.getJSONArray(i)
-                        put(entry.getString(0), decode(entry.get(1)))
-                    }
-                }
-            }
-            else -> error("Unknown Lua value")
+    private fun decode(value: Any?): Any? = when (value) {
+        null -> null
+        is Double, is String, is Boolean -> value
+        is LuaFnRef -> {
+            val id = value.id
+            callbacks[id]?.get() ?: Callback(id).also { callbacks[id] = CallbackRef(id, it, collectedFunctions) }
         }
-        else -> value
+        is Array<*> -> List(value.size) { decode(value[it]) }
+        is LuaMap -> {
+            val flat = value.flat
+            val map = LinkedHashMap<String, Any?>()
+            var i = 0
+            while (i + 1 < flat.size) {
+                map[flat[i] as String] = decode(flat[i + 1])
+                i += 2
+            }
+            map
+        }
+        else -> error("Unknown Lua value")
     }
-
-    private fun tag(vararg values: Any?): JSONArray = JSONArray(values.asList())
 
     private external fun nativeCreate(): Long
     private external fun nativeRun(handle: Long, mode: Int, code: ByteArray, filename: String, budgetMs: Long): ByteArray?
+    private external fun nativeInstall(handle: Long, bindings: Any?, budgetMs: Long): Boolean
+    private external fun nativeCall(
+        handle: Long, id: Int, args: Array<Any?>, expired: IntArray?, readResult: Boolean, budgetMs: Long,
+    ): Array<Any?>?
     private external fun nativeClose(handle: Long)
 
     private companion object {
         const val BOOTSTRAP = 0
         const val EVAL = 1
-        const val DISPATCH = 2
 
         init {
             System.loadLibrary("materialboard_lua")

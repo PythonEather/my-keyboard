@@ -18,8 +18,14 @@
 # The native Lua runtime calls dispatchHost by name from C (JNI): without this rule R8 removes it as unused
 -keep class com.expressive.keyboard.LuaPluginRuntime {
     native <methods>;
-    byte[] dispatchHost(int, byte[]);
+    java.lang.Object dispatchHost(int, java.lang.Object[]);
 }
+# plugin_lua.c builds and reads these classes by name (constructors and fields): keep them exactly as they are
+-keep class com.expressive.keyboard.LuaMap { *; }
+-keep class com.expressive.keyboard.LuaHostRef { *; }
+-keep class com.expressive.keyboard.LuaFnRef { *; }
+-keep class com.expressive.keyboard.LuaJsonText { *; }
+-keep class com.expressive.keyboard.LuaHostError { *; }
 -dontwarn java.beans.**
 -dontwarn javax.lang.model.**
 -dontwarn jdk.dynalink.**

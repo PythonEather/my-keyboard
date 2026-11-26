@@ -1,18 +1,16 @@
--- Bridge between the keyboard (Kotlin) and a Lua plugin. Same wire format as assets/quickjs/plugin-bridge.js:
--- values cross the boundary as JSON, with tagged tuples for functions, host bindings and "undefined".
---   ["u"]  undefined          ["n","NaN"]  non-finite number     ["f",id]  a script function
---   ["a",[items]]  list       ["o",[[key,value],...]]  object    ["b",id,name]  a host function
---   ["j","json"]  a JSON text the keyboard wants parsed
--- The chunk returns the dispatcher: dispatcher(requestJson) -> responseJson.
-
-local host = __materialBoardHost
-__materialBoardHost = nil
+-- Bridge between the keyboard (Kotlin) and a Lua plugin.
+-- Values no longer cross the boundary as JSON: plugin_lua.c converts Lua tables, strings and numbers to Java objects
+-- and back directly, and keeps the Lua callbacks handed to Kotlin in a registry table. What is left here is the
+-- plugin-facing JSON helpers (kb.json) and the two functions the native side calls:
+--   install(bindings)   makes the keyboard's functions and tables Lua globals
+--   jsonDecode(text)    parses JSON text into plain tables (null becomes nil), used for ScriptJson values
+-- The chunk returns a table holding both.
 
 local G = _G
-local type, pairs, ipairs, select, tostring, tonumber, error = type, pairs, ipairs, select, tostring, tonumber, error
+local type, pairs, error, tostring, tonumber = type, pairs, error, tostring, tonumber
 local math_type, tointeger, huge = math.type, math.tointeger, math.huge
 local sfind, ssub, sbyte, sformat, sgsub = string.find, string.sub, string.byte, string.format, string.gsub
-local concat, unpack = table.concat, table.unpack
+local concat = table.concat
 local uchar = utf8.char
 
 local NULL = setmetatable({}, { __tostring = function() return "null" end })
@@ -114,7 +112,7 @@ function parse_value(s, i, depth)
     end
 end
 
--- A decoded list may hold NULL placeholders (so that #list stays right); decode() turns them into nil.
+-- A decoded list may hold NULL placeholders (so that #list stays right); decode_plain() turns them into nil.
 local function json_parse(s)
     local value, i = parse_value(s, 1, 0)
     if skip(s, i) <= #s then error("extra data after the JSON value", 0) end
@@ -126,8 +124,6 @@ local ESC = { ['"'] = '\\"', ['\\'] = '\\\\', ['\b'] = '\\b', ['\f'] = '\\f', ['
 local function esc(c) return ESC[c] or sformat("\\u%04x", sbyte(c)) end
 local function quote(s) return '"' .. sgsub(s, '[%c"\\]', esc) .. '"' end
 
-local callbacks, next_callback = {}, 1
-
 local function is_list(t)
     local n = 0
     for k in pairs(t) do
@@ -137,98 +133,15 @@ local function is_list(t)
     return n == #t
 end
 
-local encode
-
 local function encode_number(v)
-    if v ~= v then return '["n","NaN"]' end
-    if v == huge then return '["n","Infinity"]' end
-    if v == -huge then return '["n","-Infinity"]' end
     if math_type(v) == "integer" then return tostring(v) end
     local i = tointeger(v)
     if i and v > -1e15 and v < 1e15 then return tostring(i) end
     return sformat("%.17g", v)
 end
 
-function encode(value, depth)
-    local t = type(value)
-    if value == nil or depth > 32 then return "null" end
-    if t == "string" then return quote(value) end
-    if t == "number" then return encode_number(value) end
-    if t == "boolean" then return value and "true" or "false" end
-    if t == "function" then
-        local id = next_callback
-        if id > 2147483647 then error("Too many Lua callbacks", 0) end
-        next_callback = id + 1
-        callbacks[id] = value
-        return '["f",' .. id .. "]"
-    end
-    if t == "table" then
-        local parts, n = {}, 0
-        if is_list(value) then
-            for i = 1, #value do n = n + 1; parts[n] = encode(value[i], depth + 1) end
-            return '["a",[' .. concat(parts, ",") .. "]]"
-        end
-        for k, v in pairs(value) do
-            n = n + 1
-            parts[n] = "[" .. quote(tostring(k)) .. "," .. encode(v, depth + 1) .. "]"
-        end
-        return '["o",[' .. concat(parts, ",") .. "]]"
-    end
-    return quote(tostring(value))
-end
-
--- ---------------------------------------------------------------- wire decode
-local decode, decode_plain
-
-local function binding(id, name)
-    return function(...)
-        local count = select("#", ...)
-        local wire = {}
-        for i = 1, count do wire[i] = encode((select(i, ...)), 0) end
-        local reply = json_parse(host(id, "[" .. concat(wire, ",") .. "]"))
-        if not reply[1] then error(reply[2] or ("host call " .. name .. " failed"), 2) end
-        return decode(reply[2])
-    end
-end
-
-local SPECIAL = { NaN = 0 / 0, Infinity = huge, ["-Infinity"] = -huge }
-
-function decode(value)
-    if value == NULL then return nil end
-    if type(value) ~= "table" then return value end
-    local tag = value[1]
-    if tag == "u" then return nil end
-    if tag == "n" then
-        local text = value[2]
-        if SPECIAL[text] ~= nil then return SPECIAL[text] end
-        return tonumber(text)
-    end
-    if tag == "f" then return callbacks[value[2]] end
-    if tag == "b" then return binding(value[2], value[3]) end
-    if tag == "j" then
-        local ok, parsed = pcall(json_parse, value[2])
-        if not ok then return nil end
-        return decode_plain(parsed)
-    end
-    if tag == "a" then
-        local items, out = value[2], {}
-        for i = 1, #items do out[i] = decode(items[i]) end
-        return out
-    end
-    if tag == "o" then
-        local entries, out = value[2], {}
-        for i = 1, #entries do
-            local entry = entries[i]
-            local item = decode(entry[2])
-            if item ~= nil then out[entry[1]] = item end
-        end
-        return out
-    end
-    error("Unknown Lua host value", 0)
-end
-
 -- plain JSON (kb.json.decode and storage): objects and arrays as they are, null as nil
-function decode_plain(value)
+local function decode_plain(value)
     if value == NULL then return nil end
     if type(value) ~= "table" then return value end
     local out = {}
@@ -271,25 +184,13 @@ end
 
 local function json_stringify(value) return json_encode_plain(value, 0) end
 
--- ---------------------------------------------------------------- dispatcher
-return function(request)
-    local command = json_parse(request)
-    if command[1] == "install" then
-        local bindings = decode(command[2])
+-- ---------------------------------------------------------------- entry points for the native side
+return {
+    install = function(bindings)
         for name, value in pairs(bindings) do G[name] = value end
         if type(G.kb) == "table" then
             G.kb.json = { decode = json_decode, encode = json_stringify }
         end
-        return "[null]"
-    end
-    local expired = command[4]
-    for i = 1, #expired do callbacks[expired[i]] = nil end
-    local fn = callbacks[command[2]]
-    if not fn then error("the Lua callback is gone", 0) end
-    local items = command[3][2]
-    local args = {}
-    for i = 1, #items do args[i] = decode(items[i]) end
-    local result = fn(unpack(args, 1, #items))
-    if command[5] then return "[" .. encode(result, 0) .. "]" end
-    return "[null]"
-end
+    end,
+    jsonDecode = json_decode,
+}
