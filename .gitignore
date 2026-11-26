@@ -12,7 +12,6 @@ dist/
 keystore/
 *.jks
 *.keystore
-!signing/ci-debug.keystore
 
 # файлы ИИ-ассистентов — только локально, не в репозиторий
 CODEX.md
