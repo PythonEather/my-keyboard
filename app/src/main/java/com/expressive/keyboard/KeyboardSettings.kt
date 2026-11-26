@@ -297,6 +297,7 @@ data class KeyboardSettings(
     val animOpenCfg: String = "",
     // --- ввод ---
     val spaceSwipe: String = "CURSOR",            // CURSOR | LANGUAGE | OFF
+    val spaceSwipeVertical: String = "OFF",       // свайп по пробелу вверх-вниз: OFF | CURSOR | LANGUAGE
     /** Удержание кнопки языка: LANGUAGES | SYSTEM | EMOJI | CLIPBOARD | VOICE | SETTINGS | ONE_HANDED | OFF */
     val globeLongPress: String = "LANGUAGES",
     /** Панель редактирования над клавиатурой: курсор, выделение, копировать/вставить. */
@@ -649,6 +650,7 @@ object KeyboardPrefs {
             animOpen = p.getString("anim_open", "NONE") ?: "NONE",
             animOpenCfg = p.getString("anim_open_cfg", "") ?: "",
             spaceSwipe = p.getString("space_swipe", "CURSOR") ?: "CURSOR",
+            spaceSwipeVertical = p.getString("space_swipe_vertical", "OFF") ?: "OFF",
             globeLongPress = p.getString("globe_long_press", "LANGUAGES") ?: "LANGUAGES",
             editBar = p.getBoolean("edit_bar", false),
             toolsLongPress = p.getString("tools_long_press", "PIN") ?: "PIN",

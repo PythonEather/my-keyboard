@@ -2293,6 +2293,25 @@ class ComposeKeyboardService : InputMethodService(),
         schedulePredictions()
     }
 
+    override fun spaceCursorLine(direction: Int) {
+        if (kb.panel == ActivePanel.TRANSLATE || panelInput != null) return
+        val ic = currentInputConnection ?: return
+        finishComposing(ic)
+        undo = null
+        autoSpace = false
+        lastActionWasSpace = false
+        lastCommittedWord = ""
+        expectUnknown()
+        sendDownUpKeyEvents(if (direction > 0) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP)
+        HapticsEngine.tick(this, inputView, settings)
+        schedulePredictions()
+    }
+
+    override fun spaceSwipeLanguage(direction: Int) {
+        if (kb.panel == ActivePanel.TRANSLATE) return
+        toggleLanguage(direction)
+    }
+
     private fun deleteWord() {
         if (kb.panel == ActivePanel.TRANSLATE) {
             val t = kb.translatorInput

@@ -196,6 +196,9 @@ class PopupController {
     }
 }
 
+/** Когда началось прошлое нажатие буквы: при быстром наборе свайп вверх и скольжение требуют большего движения. */
+private var lastKeyDownMs = 0L
+
 /** Чем закончилось касание буквы до выбора варианта. */
 internal enum class KeyGesture { RELEASED, CANCELED, HOLD, SLIDE, GLIDE, SWIPE_UP }
 
@@ -392,6 +395,7 @@ internal fun KeyView(
                 val step = 44.dp.toPx()
                 val swipe = 56.dp.toPx()
                 val cursorStep = 14.dp.toPx()
+                val lineStep = 26.dp.toPx()
                 val wordStep = 36.dp.toPx()
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -515,6 +519,10 @@ internal fun KeyView(
                                 var lastX = down.position.x
                                 var cursorMode = false
                                 var langIntent = false
+                                // ось жеста: 0 — ещё не ясна, 1 — по горизонтали, 2 — по вертикали
+                                var axis = 0
+                                var vLast = down.position.y
+                                var vLangDone = false
                                 Rollover.press(holder) {
                                     if (!swiped && !picker && !rolled) {
                                         rolled = true
@@ -552,6 +560,34 @@ internal fun KeyView(
                                     }
                                     if (picker || rolled) continue
                                     val dx = ch.position.x - down.position.x
+                                    val dy = ch.position.y - down.position.y
+                                    val vMode = cSettings.spaceSwipeVertical
+                                    if (vMode != "OFF" && !inTranslator) {
+                                        if (axis == 0 && !swiped && max(abs(dx), abs(dy)) > slop) {
+                                            axis = if (abs(dy) > abs(dx) * 1.3f) 2 else 1
+                                            if (axis == 2) {
+                                                swiped = true
+                                                Rollover.done(holder)
+                                                vLast = ch.position.y
+                                            }
+                                        }
+                                        if (axis == 2) {
+                                            if (vMode == "CURSOR") {
+                                                while (ch.position.y - vLast > lineStep) {
+                                                    vLast += lineStep
+                                                    act.spaceCursorLine(1)
+                                                }
+                                                while (vLast - ch.position.y > lineStep) {
+                                                    vLast -= lineStep
+                                                    act.spaceCursorLine(-1)
+                                                }
+                                            } else if (vMode == "LANGUAGE" && !vLangDone && abs(dy) > swipe) {
+                                                vLangDone = true
+                                                act.spaceSwipeLanguage(if (dy > 0) 1 else -1)
+                                            }
+                                            continue
+                                        }
+                                    }
                                     when (mode) {
                                         // быстрый свайп — язык; задержал палец и повёл — курсор (без ожидания удержания
                                         // для смены языка: решает, сколько палец простоял до начала движения)
@@ -657,8 +693,13 @@ internal fun KeyView(
                                 }
                                 val glideStart = max(slop * 1.5f, iw * 0.75f)
                                 val sensitivity = cSettings.flickSensitivity
-                                val upDist = max(15.dp.toPx(), ih * (0.95f - 0.50f * sensitivity))
-                                val slideDist = max((28f - 12f * sensitivity).dp.toPx(), iw * 0.5f)
+                                // быстрый набор: палец не успевает «прицелиться» и чиркает вверх или вбок —
+                                // тогда вместо буквы вылезали символы-подсказки (* # …). Просим жест подлиннее
+                                val fastTyping = down.uptimeMillis - lastKeyDownMs < 260L
+                                lastKeyDownMs = down.uptimeMillis
+                                val fastMul = if (fastTyping) 1.8f else 1f
+                                val upDist = max(15.dp.toPx(), ih * (0.95f - 0.50f * sensitivity)) * fastMul
+                                val slideDist = max((28f - 12f * sensitivity).dp.toPx(), iw * 0.5f) * fastMul
                                 // удержание кнопки языка может делать своё действие (настройка), а не открывать список языков
                                 val globeAction = k.type == KeyType.GLOBE && cSettings.globeLongPress != "LANGUAGES"
                                 val holdable = vars.size > 1 || (vars.size == 1 && vars[0] != out)

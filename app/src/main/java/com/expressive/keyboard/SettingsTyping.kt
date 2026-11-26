@@ -198,6 +198,15 @@ internal fun TypingPage(settings: KeyboardSettings, part: SettingsPage) {
             },
             listOf("CURSOR" to "Курсор", "LANGUAGE" to "Язык", "BOTH" to "Оба", "OFF" to "Выкл"), settings.spaceSwipe
         ) { v -> KeyboardPrefs.edit(context) { putString("space_swipe", v) } }
+        ChoiceItem(
+            Icons.Rounded.Swipe, "Свайп по пробелу вверх-вниз",
+            when (settings.spaceSwipeVertical) {
+                "CURSOR" -> "Ведите палец вверх или вниз — курсор идёт по строкам"
+                "LANGUAGE" -> "Свайп вверх или вниз меняет язык"
+                else -> "Вверх и вниз — ничего"
+            },
+            listOf("OFF" to "Выкл", "CURSOR" to "Курсор", "LANGUAGE" to "Язык"), settings.spaceSwipeVertical
+        ) { v -> KeyboardPrefs.edit(context) { putString("space_swipe_vertical", v) } }
         val spaceActions = listOf(
             "PICKER" to "Выбор клавиатуры", "LANGUAGE" to "Смена языка", "AI_FIX" to "Улучшить текст", "VOICE" to "Голосовой ввод", "EMOJI" to "Эмодзи",
             "CLIPBOARD" to "Буфер обмена", "TOOLBAR" to "Панель функций", "SETTINGS" to "Настройки", "OFF" to "Ничего"

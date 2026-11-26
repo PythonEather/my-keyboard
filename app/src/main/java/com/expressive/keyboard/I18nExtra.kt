@@ -3,6 +3,10 @@ package com.expressive.keyboard
 // Дополнительные английские и испанские строки. tr() смотрит сюда раньше основных таблиц.
 
 internal val EN_EXTRA: Map<String, String> = hashMapOf(
+    "Свайп по пробелу вверх-вниз" to "Space bar swipe up / down",
+    "Ведите палец вверх или вниз — курсор идёт по строкам" to "Drag up or down: the cursor moves between lines",
+    "Свайп вверх или вниз меняет язык" to "Swipe up or down changes the language",
+    "Вверх и вниз — ничего" to "Up and down do nothing",
     "Импортировано: {0}" to "Imported: {0}",
     "Импорт набора анимаций" to "Import animation pack",
     "Из .json-файла: нажатия, подсказка, переходы панелей и открытие клавиатуры. Подойдёт и набор от друга" to "From a .json file: key presses, popup, panel transitions and keyboard opening. A pack from a friend works too",
