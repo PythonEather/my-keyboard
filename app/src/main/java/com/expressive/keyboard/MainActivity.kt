@@ -502,6 +502,10 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
     // typing does not tear it down and clearing the search does not rebuild every tile: that rebuild was the lag.
     Column(Modifier.collapsedIf(searching), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         var i = 0
+        // phones (one pane): two-column cards and a soft staggered entrance; the two-pane tablet layout keeps the list
+        val grid = selected == null
+        val intro = remember { !HomeIntro.played }
+        LaunchedEffect(Unit) { delay(1500); HomeIntro.played = true }
         // a plugin with the settings_layout permission may pin, reorder and hide pages (never Plugins, Backup or About)
         val arranger = PluginSettingsLayout.owner(settings.pluginSettingsLayout)
         val layout = arranger?.settingsLayout
@@ -509,10 +513,16 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
         val expressive = settings.designStyle == DesignStyle.EXPRESSIVE.id && settings.shapeAmount == ShapeAmount.FULL
         // the user's own "Important" slots; while a plugin arranges Settings, the plugin decides
         val pins = if (arranger == null) HomePins.parse(settings.homePins) else emptyList()
-        SettingsSection(null) {
+        val whatsNew = SettingsPage.WHATS_NEW
+        val showWhatsNew = PluginSettingsLayout.arrange(listOf(whatsNew), layout).isNotEmpty()
+        if (grid) {
+            if (showWhatsNew) {
+                FeaturedCard(whatsNew, expressive, if (intro) i else -1) { onNavigate(whatsNew) }
+                i++
+            }
+        } else SettingsSection(null) {
             AppLanguageItem(settings)
-            val p = SettingsPage.WHATS_NEW
-            if (PluginSettingsLayout.arrange(listOf(p), layout).isNotEmpty()) CategoryTile(p, i++, selected = p == selected, expressive = expressive) { onNavigate(p) }
+            if (showWhatsNew) CategoryTile(whatsNew, i++, selected = whatsNew == selected, expressive = expressive) { onNavigate(whatsNew) }
         }
         if (!imeEnabled || !imeSelected) HeroCard(
             spec = rememberSpec(settings),
@@ -539,8 +549,13 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
             if (editingPins) {
                 PinEditor(settings) { editingPins = false }
             } else {
-                if (pins.isNotEmpty()) SettingsSection("Important") {
-                    for (p in pins) CategoryTile(p, i++, selected = p == selected || p == selected?.parent, expressive = expressive) { onNavigate(p) }
+                if (pins.isNotEmpty()) {
+                    if (grid) {
+                        HomeGridSection("Important", pins, i, expressive, intro, onNavigate)
+                        i += pins.size
+                    } else SettingsSection("Important") {
+                        for (p in pins) CategoryTile(p, i++, selected = p == selected || p == selected?.parent, expressive = expressive) { onNavigate(p) }
+                    }
                 }
                 SettingsSection(null) {
                     ActionItem(
@@ -554,9 +569,14 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
             val looks = PluginSettingsLayout.arrange(
                 listOf(SettingsPage.SIZE, SettingsPage.KEYS, SettingsPage.THEMES, SettingsPage.COLORS, SettingsPage.ANIMATIONS, SettingsPage.EXTRAS, SettingsPage.AUTO_THEMES, SettingsPage.LAYOUT_PROFILES), layout
             ).filter { it !in pins }
-            if (looks.isNotEmpty()) SettingsSection("Внешний вид") {
-                for (p in looks) {
-                    CategoryTile(p, i++, selected = p == selected || p == selected?.parent, expressive = expressive) { onNavigate(p) }
+            if (looks.isNotEmpty()) {
+                if (grid) {
+                    HomeGridSection("Внешний вид", looks, i, expressive, intro, onNavigate)
+                    i += looks.size
+                } else SettingsSection("Внешний вид") {
+                    for (p in looks) {
+                        CategoryTile(p, i++, selected = p == selected || p == selected?.parent, expressive = expressive) { onNavigate(p) }
+                    }
                 }
             }
             val groups = listOf(
@@ -567,17 +587,30 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
             for ((title, allPages) in groups) {
                 val pages = PluginSettingsLayout.arrange(allPages, layout).filter { it !in pins }
                 if (pages.isEmpty()) continue
-                SettingsSection(title) {
+                val showMic = SettingsPage.TOOLBAR in allPages && imeSelected && !micGranted
+                if (grid) {
+                    HomeGridSection(
+                        title, pages, i, expressive, intro, onNavigate,
+                        hasExtra = showMic,
+                        extra = {
+                            ActionItem(Icons.Rounded.Mic, "Микрофон для голосового ввода", null,
+                                onClick = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) })
+                        }
+                    )
+                    i += pages.size
+                } else SettingsSection(title) {
                     for (p in pages) {
                         val idx = i++
                         CategoryTile(p, idx, selected = p == selected || p == selected?.parent, expressive = expressive) { onNavigate(p) }
                     }
-                    if (SettingsPage.TOOLBAR in allPages && imeSelected && !micGranted) {
+                    if (showMic) {
                         ActionItem(Icons.Rounded.Mic, "Микрофон для голосового ввода", null,
                             onClick = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) })
                     }
                 }
             }
+            // on phones the language switcher moved from the top (it was a big card on every visit) to the bottom
+            if (grid) SettingsSection(null) { AppLanguageItem(settings) }
             HomeLookSection(settings)
         }
         UpdateCard()

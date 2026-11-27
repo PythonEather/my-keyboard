@@ -647,6 +647,146 @@ internal fun CategoryTile(page: SettingsPage, index: Int, selected: Boolean = fa
     }
 }
 
+// ----------------------------------------------------------------------- home cards (phones)
+
+/** Remembers that the home entrance animation already played in this app run, so coming back to Home does not replay it. */
+internal object HomeIntro { var played = false }
+
+/**
+ * Shared body of the home cards: expressive shape morph and a small squish on press, plus a soft staggered entrance.
+ * Every animated value is read inside graphicsLayer / draw lambdas, so a moving card never recomposes.
+ * [revealOrder] < 0 means no entrance (already played).
+ */
+@Composable
+private fun HomeCardShell(
+    bg: Color,
+    revealOrder: Int,
+    modifier: Modifier,
+    onClick: () -> Unit,
+    content: @Composable (rot: () -> Float) -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val rot = animateFloatAsState(if (pressed) 40f else 0f, spring(dampingRatio = 0.5f, stiffness = 300f), label = "homeCardRot")
+    val corner = animateDpAsState(if (pressed) 14.dp else 28.dp, spring(dampingRatio = 0.6f, stiffness = 700f), label = "homeCardCorner")
+    val scale = animateFloatAsState(if (pressed) 0.97f else 1f, spring(dampingRatio = 0.6f, stiffness = 500f), label = "homeCardScale")
+    val reveal = remember { Animatable(if (revealOrder < 0) 1f else 0f) }
+    LaunchedEffect(Unit) {
+        if (revealOrder >= 0) {
+            kotlinx.coroutines.delay(revealOrder * 40L)
+            reveal.animateTo(1f, spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow))
+        }
+    }
+    Box(
+        modifier
+            .graphicsLayer {
+                val r = reveal.value
+                alpha = r.coerceIn(0f, 1f)
+                translationY = (1f - r) * 36.dp.toPx()
+                scaleX = scale.value
+                scaleY = scale.value
+            }
+            .roundedLayer { corner.value }
+            .background(bg)
+            .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick),
+        contentAlignment = Alignment.CenterStart
+    ) { content { rot.value } }
+}
+
+/** Compact card: wavy icon and the page title. Two of them fit in a row, so Home needs about half the scrolling. */
+@Composable
+internal fun CategoryCard(page: SettingsPage, index: Int, expressive: Boolean, revealOrder: Int, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val (bg, fg) = when (index % 3) {
+        0 -> cs.primaryContainer to cs.onPrimaryContainer
+        1 -> cs.secondaryContainer to cs.onSecondaryContainer
+        else -> cs.tertiaryContainer to cs.onTertiaryContainer
+    }
+    val spec = remember(page, expressive) { if (expressive) WavySpec.of(page.shape) else WavySpec.Circle }
+    HomeCardShell(glassSurface(cs.surfaceBright), revealOrder, modifier, onClick) { rot ->
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(Modifier.size(40.dp).wavyBackground(spec, bg, rot), contentAlignment = Alignment.Center) {
+                Icon(page.icon, null, tint = fg, modifier = Modifier.size(22.dp))
+            }
+            Text(
+                tr(page.title),
+                style = MaterialTheme.typography.titleSmall,
+                color = cs.onSurface,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+/** The big highlighted card at the top of Home (What's new). */
+@Composable
+internal fun FeaturedCard(page: SettingsPage, expressive: Boolean, revealOrder: Int, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val spec = remember(page, expressive) { if (expressive) WavySpec.of(page.shape) else WavySpec.Circle }
+    HomeCardShell(cs.primaryContainer, revealOrder, Modifier.fillMaxWidth(), onClick) { rot ->
+        Row(
+            Modifier.fillMaxWidth().padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(Modifier.size(56.dp).wavyBackground(spec, cs.primary, rot), contentAlignment = Alignment.Center) {
+                Icon(page.icon, null, tint = cs.onPrimary, modifier = Modifier.size(28.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                Text(tr(page.title), style = MaterialTheme.typography.titleLarge, color = cs.onPrimaryContainer)
+                Text(
+                    tr(page.subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = cs.onPrimaryContainer.copy(alpha = 0.78f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(Icons.Rounded.ChevronRight, null, tint = cs.onPrimaryContainer)
+        }
+    }
+}
+
+/** A Home group as a two-column grid of compact cards. A lone last card takes the whole row. */
+@Composable
+internal fun HomeGridSection(
+    title: String?,
+    pages: List<SettingsPage>,
+    firstIndex: Int,
+    expressive: Boolean,
+    intro: Boolean,
+    onNavigate: (SettingsPage) -> Unit,
+    hasExtra: Boolean = false,
+    extra: @Composable () -> Unit = {}
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (title != null) {
+            Text(
+                tr(title),
+                modifier = Modifier.padding(start = 16.dp),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        pages.chunked(2).forEachIndexed { row, pair ->
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                pair.forEachIndexed { col, p ->
+                    val idx = firstIndex + row * 2 + col
+                    CategoryCard(p, idx, expressive, if (intro && idx < 14) idx else -1, Modifier.weight(1f).fillMaxHeight()) { onNavigate(p) }
+                }
+            }
+        }
+        if (hasExtra) SettingsSection(null) { extra() }
+    }
+}
+
 // ----------------------------------------------------------------------- выбор цвета
 
 internal val SWATCHES = listOf(
