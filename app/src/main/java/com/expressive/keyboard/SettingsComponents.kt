@@ -296,7 +296,28 @@ internal fun PillField(
 @Composable
 internal fun SettingsSection(title: String?, content: @Composable ColumnScope.() -> Unit) {
     val sub = LocalSubpageLook.current != null
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // tabbed pages: a section that is not in the open tab is not composed at all
+    val tabs = LocalPageTabs.current
+    if (tabs != null && !tabs.shows(title)) return
+    // sections of a freshly opened tab settle in one after another; a section that appears later (a switch turned on) does not wait
+    val reveal = remember { Animatable(if (tabs != null && SystemClock.uptimeMillis() - tabs.createdAt < 700L) 0f else 1f) }
+    val order = remember { if (tabs != null) tabs.counter[0]++ else 0 }
+    LaunchedEffect(Unit) {
+        if (reveal.value < 1f) {
+            delay(order.coerceAtMost(5) * 45L)
+            reveal.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow))
+        }
+    }
+    Column(
+        Modifier.then(
+            if (tabs != null) Modifier.graphicsLayer {
+                val r = reveal.value
+                alpha = r.coerceIn(0f, 1f)
+                translationY = (1f - r) * 28.dp.toPx()
+            } else Modifier
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         if (title != null) {
             Row(Modifier.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (sub) Box(Modifier.size(width = 5.dp, height = 16.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))

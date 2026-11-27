@@ -2,6 +2,12 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.33
+- Nine settings pages are now split into tabs with a sliding tab bar that stays on screen while you scroll: Colours and background (Colours, Background), Size and position (Size, Position), Keys and font (Keys, Font), Themes (Themes, Custom), Animations (Press, Panels, Custom), Extra effects (Touch, Light), Themes by app and time (Looks, Apps, Day and night), Layout profiles (Profiles, Share) and Plugins and mods (Plugins, Install, Security). The tab you picked is remembered for each page
+- Only the open tab is built, so these pages open and scroll faster, and the cards of a tab settle in one after another
+- Colours and background: a row of ready accent colours at the top, one tap instead of the colour picker. The keyboard preview stays on both tabs
+- Layout profiles: sharing and importing a profile moved to its own tab
+
 ## 11.2.32
 - Settings redesign: every page except Home has a new look. Each setting is now its own soft card that squeezes a little when pressed, section titles have an accent bar, and the icons are cookie shaped like the Home cards (round when expressive shapes are off)
 - Every page starts with a card that shows the page icon and what the page is for

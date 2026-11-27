@@ -256,6 +256,7 @@ internal fun ColorsPage(settings: KeyboardSettings) {
     val themeAccent = themeColors?.get("accent")?.let { Color(it) }
     val themeAccentText = themeColors?.get("accentText")?.let { Color(it) }
     SettingsSection("Акцентный цвет") {
+        GroupItem { QuickAccentRow(settings.colorAccent) { c -> KeyboardPrefs.edit(context) { putInt("color_accent", c) } } }
         ColorRow("Акцент: Enter, Shift, нажатие, подсветка", settings.colorAccent, themeAccent ?: auto.accent) { picker = ColorTarget("color_accent", "Акцент") }
         ColorRow("Текст на акценте", settings.colorAccentText, themeAccentText ?: auto.onAccent) { picker = ColorTarget("color_accent_text", "Текст на акценте") }
         GroupItem {

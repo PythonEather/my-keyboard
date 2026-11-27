@@ -187,7 +187,12 @@ internal val EN_EXTRA: Map<String, String> = hashMapOf(
     "Текст в ней показывается точками, например для паролей" to "Its text shows as dots, for example for passwords",
     "Новая категория" to "New category",
     "Название" to "Name",
-    "Такое название уже есть" to "That name already exists"
+    "Такое название уже есть" to "That name already exists",
+    "Цвета" to "Colours",
+    "Размер" to "Size",
+    "Нажатие" to "Press",
+    "Свои" to "Custom",
+    "Защита" to "Security"
 )
 
 internal val ES_EXTRA: Map<String, String> = hashMapOf(

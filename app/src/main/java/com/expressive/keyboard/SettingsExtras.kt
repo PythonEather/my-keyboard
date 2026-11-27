@@ -469,10 +469,20 @@ internal fun LayoutProfilesPage() {
                 }
             )
         }
+    }
+    SettingsSection("Share a profile") {
         ActionItem(
             Icons.Rounded.FileDownload, "Import a profile file", "From a friend. Only layout values are read from it",
             onClick = { importLauncher.launch(arrayOf("*/*")) }
         )
+        GroupItem {
+            Text(
+                tr("To send one of your profiles to a friend, tap the share icon next to it in Profiles."),
+                Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
     if (naming) NameDialog("Name this profile", { naming = false }) { name ->
         naming = false

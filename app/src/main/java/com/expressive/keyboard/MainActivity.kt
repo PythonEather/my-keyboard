@@ -358,6 +358,12 @@ internal fun SettingsPageScaffold(
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val cs = MaterialTheme.colorScheme
     var testText by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    // long pages are split into tabs (see SettingsPanels.kt); the open tab is remembered per page
+    val tabDefs = remember(page) { PageTabs.of(page) }
+    var tabIndex by androidx.compose.runtime.saveable.rememberSaveable(page) { mutableStateOf(0) }
+    val tabInfo = remember(tabDefs, tabIndex) { tabDefs?.let { PageTabsInfo(it, tabIndex.coerceIn(0, it.lastIndex), PageTabs.pinned(page)) } }
+    val pageScroll = rememberScrollState()
+    LaunchedEffect(tabIndex) { pageScroll.animateScrollTo(0) }
     val showTest = page in setOf(SettingsPage.SIZE, SettingsPage.KEYS, SettingsPage.LAYOUT, SettingsPage.LANGUAGES,
         SettingsPage.GESTURES, SettingsPage.TYPING, SettingsPage.FEEDBACK)
     Scaffold(
@@ -390,15 +396,16 @@ internal fun SettingsPageScaffold(
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
                 )
             }
+            if (tabInfo != null) PageTabBar(tabInfo.tabs, tabInfo.selected, { tabIndex = it }, Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
             Column(
-                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).navigationBarsPadding(),
+                modifier = Modifier.fillMaxSize().verticalScroll(pageScroll).padding(horizontal = 16.dp).navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Spacer(Modifier.height(4.dp))
                 val expressiveLook = settings.designStyle == DesignStyle.EXPRESSIVE.id && settings.shapeAmount == ShapeAmount.FULL
                 val subLook = remember(page, expressiveLook) { if (page == SettingsPage.HOME) null else SubpageLook(expressiveLook) }
                 // every page except Home gets the new look (see SettingsRedesign.kt)
-                CompositionLocalProvider(LocalSubpageLook provides subLook) {
+                CompositionLocalProvider(LocalSubpageLook provides subLook, LocalPageTabs provides tabInfo) {
                     if (page != SettingsPage.HOME && page != SettingsPage.WHATS_NEW) PageHeader(page, expressiveLook)
                     when (page) {
                         SettingsPage.HOME -> HomePage(settings, onNavigate, selected)
