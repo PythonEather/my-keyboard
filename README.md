@@ -66,7 +66,9 @@ Get the latest APK from [Releases](https://github.com/PythonEather/my-keyboard/r
 successful **Build APK** run in the [Actions](https://github.com/PythonEather/my-keyboard/actions) tab (artifacts
 `ExpressiveKeyboard-release-apk` and `ExpressiveKeyboard-debug-apk`).
 
-Requires Android 8.0 or newer. A newer build installs over an older one only if both were signed with the same key;
+Requires Android 8.0 or newer.
+
+Also available on [Appteka](https://appteka.store/app/146r343798). A newer build installs over an older one only if both were signed with the same key;
 an app signed with a different key has to be uninstalled first.
 
 ### Updates inside the app (OTA)
