@@ -1441,7 +1441,7 @@ class ComposeKeyboardService : InputMethodService(),
             ic.commitText(word, 1)
             ic.endBatchEdit()
             expect(tw.start + word.length)
-            learn("", word)
+            learn("", word, starter = false)
         }
         tapWord = null
         // дальше — подсказки следующего слова, а не пустая строка до первой буквы
@@ -1462,10 +1462,10 @@ class ComposeKeyboardService : InputMethodService(),
         return if (m.groupValues[2].equals(prev, ignoreCase = true)) m.groupValues[1] else ""
     }
 
-    private fun learn(previous: String, word: String, boost: Int = 1) {
+    private fun learn(previous: String, word: String, boost: Int = 1, starter: Boolean = previous.isEmpty() && boost == 1) {
         // латиница пиньиня/ромадзи — не слова языка
         if (Cjk.isCjk(kb.language.composer)) return
-        if (!flags.isPassword && flags.suggestions && !privateNow) WordPredictorEngine.learn(kb.language, previous, word, boost)
+        if (!flags.isPassword && flags.suggestions && !privateNow) WordPredictorEngine.learn(kb.language, previous, word, boost, starter)
         if (settings.typingStats && !flags.isPassword && !privateNow) TypingHistory.word(this, word)
         if (ScriptHost.has("word") && !flags.isPassword && !privateNow) ScriptHost.emit("word", mapOf("word" to word, "previous" to previous))
     }
@@ -1763,6 +1763,7 @@ class ComposeKeyboardService : InputMethodService(),
         icCommit(ic, correction + suffix)
         ic.endBatchEdit()
         undo = UndoAutoCorrectState(tail, correction + suffix)
+        if (!correction.equals(tail, ignoreCase = true)) WordPredictorEngine.noteCorrectionApplied()
         if (' ' !in correction) learn(lastCommittedWord, correction)
         lastCommittedWord = correction.substringAfterLast(' ')
         autoSpace = false
@@ -1794,6 +1795,7 @@ class ComposeKeyboardService : InputMethodService(),
             val committed = correction + suffix
             icCommit(ic, committed)
             undo = UndoAutoCorrectState(word, committed)
+            if (!correction.equals(word, ignoreCase = true)) WordPredictorEngine.noteCorrectionApplied()
             // исправленное слово тоже учится — растут частота и пары слов, как в Gboard
             if (' ' !in correction) learn(lastCommittedWord, correction)
             lastCommittedWord = correction.substringAfterLast(' ')

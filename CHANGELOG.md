@@ -2,6 +2,19 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.34
+- Next-word suggestions now rank by one combined score instead of a fixed order. Your own three-word phrases, your own word pairs, the built-in phrase list and the language models all add points, so a word that several of them agree on comes first
+- Recent habits count more: what you typed this week now outranks old habits. The keyboard remembers when each word and pair was last used (this is kept in the backup too)
+- Words from the current conversation get a small boost in suggestions, swipe typing and autocorrect, so a word you have just used is easy to pick again. It resets after 15 minutes of not typing
+- Mixed languages: when the previous word is English in a Russian message (or Russian in an English one), the next-word suggestions come from that language
+- Your own spellings are remembered: a capital letter you use in the middle of a sentence twice (Aliya, iPhone) is used in suggestions and corrections from then on, and it is forgotten if you start writing the word in lowercase
+- Autocorrect in Normal mode now also fixes common mix-ups when the words before make the other word clearly more likely: there/their, then/than, whether/weather, lose/loose, effect/affect, and the Russian -тся/-ться endings after words like "хочу", "надо", "он" (хочу учится becomes хочу учиться, он учиться becomes он учится). Only words to the left are used, so the rules are strict
+- Autocorrect backs off by itself: if you undo more than one fix in five, Normal mode works like Safe mode until you stop undoing. Your setting does not change
+- Typing Russian with Latin letters offers the Russian word as a suggestion (spasibo becomes спасибо). It only appears if you also write in Russian, and only for common words
+- Suggestions now learn your own three-word phrases. Type a phrase twice and the next word is predicted from the last two words you typed, and the same context helps autocorrect pick the right word
+- The suggestions on an empty message now learn how you usually start messages, instead of showing only a fixed list
+- Typing is lighter on the processor, which helps most on slower phones: learned words are found by their first letters instead of scanning the whole list on every key, the typo check no longer creates new memory for every candidate word, and the swipe typing word list is kept until you learn a new word
+
 ## 11.2.33
 - Nine settings pages are now split into tabs with a sliding tab bar that stays on screen while you scroll: Colours and background (Colours, Background), Size and position (Size, Position), Keys and font (Keys, Font), Themes (Themes, Custom), Animations (Press, Panels, Custom), Extra effects (Touch, Light), Themes by app and time (Looks, Apps, Day and night), Layout profiles (Profiles, Share) and Plugins and mods (Plugins, Install, Security). The tab you picked is remembered for each page
 - Only the open tab is built, so these pages open and scroll faster, and the cards of a tab settle in one after another

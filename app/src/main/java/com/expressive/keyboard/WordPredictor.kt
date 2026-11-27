@@ -137,6 +137,8 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentMap
+import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.math.PI
@@ -197,8 +199,18 @@ object WordPredictorEngine {
     private const val KEY_BIGRAMS = "user_bigrams"
 
     /** "ru:слово" → сколько раз набрано (см. LEARNED). */
-    private val userWords = ConcurrentHashMap<String, Int>()
-    private val userBigrams = ConcurrentHashMap<String, Int>()
+    private val userWords = ConcurrentSkipListMap<String, Int>()
+    private val userBigrams = ConcurrentSkipListMap<String, Int>()
+    /** Растёт при каждом изменении выученного: по нему понятно, что список слов для свайпа пора собрать заново. */
+    @Volatile private var userVer = 0
+
+    /** Записи, ключ которых начинается с prefix: поиск по отсортированной карте, а не перебор всех выученных слов на каждое нажатие. */
+    private fun <V : Any> ConcurrentSkipListMap<String, V>.withPrefix(prefix: String): Map<String, V> =
+        subMap(prefix, true, prefix + Char.MAX_VALUE, true)
+
+    private val editBuffers = object : ThreadLocal<Array<FloatArray>>() {
+        override fun initialValue(): Array<FloatArray> = Array(4) { FloatArray(32) }
+    }
     private val dicts = ConcurrentHashMap<String, LangDict>()
     private val loading = ConcurrentHashMap.newKeySet<String>()
     /** Словарь изменили, пока он грузился: после загрузки прочитать заново, иначе правка «Моего словаря» теряется. */
@@ -216,10 +228,12 @@ object WordPredictorEngine {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + BackgroundErrors)
     private var saveJob: Job? = null
     private val glideCache = ConcurrentHashMap<String, List<Pair<String, Float>>>()
+    private val glideMerged = ConcurrentHashMap<String, Triple<List<Pair<String, Float>>, Int, List<Pair<String, Float>>>>()
 
     /** Система просит память, а клавиатура скрыта: сбрасываем то, что пересчитается само. */
     fun trimMemory() {
         glideCache.clear()
+        glideMerged.clear()
     }
     /** Вызывается в главном потоке, когда словарь загрузился — клавиатура обновляет подсказки. */
     @Volatile var onDictionaryLoaded: (() -> Unit)? = null
@@ -426,6 +440,10 @@ object WordPredictorEngine {
                 }
                 parseInto(wordsRaw, userWords)
                 parseInto(bigramsRaw, userBigrams)
+                parseInto(data.getString(KEY_RECENT, null), userRecent)
+                parseCaps(data.getString(KEY_CAPS, null), userCaps)
+                acApplied = data.getInt(KEY_AC_APPLIED, 0)
+                acUndone = data.getInt(KEY_AC_UNDONE, 0)
                 // привычки меняются: раз в 30 дней счётчики вдвое меньше, старое уступает недавнему
                 val day = System.currentTimeMillis() / 86_400_000L
                 val last = data.getLong(KEY_DECAY_DAY, 0L)
@@ -510,7 +528,7 @@ object WordPredictorEngine {
         }
     }
 
-    private fun decayInto(map: ConcurrentHashMap<String, Int>, periods: Int, keepLearned: Boolean) {
+    private fun decayInto(map: ConcurrentMap<String, Int>, periods: Int, keepLearned: Boolean) {
         for ((k, n) in map) {
             val v = decayedCount(n, periods, keepLearned)
             if (v <= 0) map.remove(k) else map[k] = v
@@ -518,7 +536,7 @@ object WordPredictorEngine {
     }
 
     /** Старые ключи без языка ("слово") получают язык по алфавиту. */
-    private fun parseInto(raw: String?, target: ConcurrentHashMap<String, Int>) {
+    private fun parseInto(raw: String?, target: ConcurrentMap<String, Int>) {
         if (raw.isNullOrBlank()) return
         runCatching {
             val json = JSONObject(raw)
@@ -815,7 +833,7 @@ object WordPredictorEngine {
     /** Сырые данные выученного (для резервной копии): слова, пары слов, «Мой словарь». */
     fun exportUserData(context: Context): Map<String, String> {
         val data = context.applicationContext.getSharedPreferences(DATA_PREFS, Context.MODE_PRIVATE)
-        return listOf(KEY_WORDS, KEY_BIGRAMS, KEY_MY_WORDS).mapNotNull { k -> data.getString(k, null)?.let { k to it } }.toMap()
+        return listOf(KEY_WORDS, KEY_BIGRAMS, KEY_MY_WORDS, KEY_RECENT, KEY_CAPS).mapNotNull { k -> data.getString(k, null)?.let { k to it } }.toMap()
     }
 
     /**
@@ -828,21 +846,31 @@ object WordPredictorEngine {
         appContext = appContext ?: app
         val w = ConcurrentHashMap<String, Int>().also { parseInto(raw[KEY_WORDS], it) }
         val b = ConcurrentHashMap<String, Int>().also { parseInto(raw[KEY_BIGRAMS], it) }
+        val r = ConcurrentHashMap<String, Int>().also { parseInto(raw[KEY_RECENT], it) }
+        val c = ConcurrentHashMap<String, String>().also { parseCaps(raw[KEY_CAPS], it) }
         val data = app.getSharedPreferences(DATA_PREFS, Context.MODE_PRIVATE)
         synchronized(this) {
             // сначала в файл: если движок ещё грузит словарь, он прочитает уже объединённое
             val fw = ConcurrentHashMap<String, Int>().also { parseInto(data.getString(KEY_WORDS, null), it) }
             val fb = ConcurrentHashMap<String, Int>().also { parseInto(data.getString(KEY_BIGRAMS, null), it) }
+            val fr = ConcurrentHashMap<String, Int>().also { parseInto(data.getString(KEY_RECENT, null), it) }
+            val fc = ConcurrentHashMap<String, String>().also { parseCaps(data.getString(KEY_CAPS, null), it) }
             w.forEach { (k, v) -> fw.merge(k, v, ::maxOf) }
             b.forEach { (k, v) -> fb.merge(k, v, ::maxOf) }
+            r.forEach { (k, v) -> fr.merge(k, v, ::maxOf) }
+            c.forEach { (k, v) -> fc.merge(k, v) { x, y -> if (capsCount(y) > capsCount(x)) y else x } }
             data.edit()
                 .putString(KEY_WORDS, JSONObject(fw.toMap()).toString())
                 .putString(KEY_BIGRAMS, JSONObject(fb.toMap()).toString())
+                .putString(KEY_RECENT, JSONObject(fr.toMap()).toString())
+                .putString(KEY_CAPS, JSONObject(fc.toMap()).toString())
                 .commit()
         }
         if (started) {
             w.forEach { (k, v) -> userWords.merge(k, v, ::maxOf) }
             b.forEach { (k, v) -> userBigrams.merge(k, v, ::maxOf) }
+            r.forEach { (k, v) -> userRecent.merge(k, v, ::maxOf) }
+            c.forEach { (k, v) -> userCaps.merge(k, v) { x, y -> if (capsCount(y) > capsCount(x)) y else x } }
             glideCache.clear()
             scheduleSave(0L)
         }
@@ -931,15 +959,51 @@ object WordPredictorEngine {
         return t == Character.NON_SPACING_MARK.toInt() || t == Character.COMBINING_SPACING_MARK.toInt()
     }
 
-    fun learn(lang: KeyboardLanguage, previous: String, word: String, boost: Int = 1) {
-        val w = word.trim().lowercase()
+    @Volatile private var lastLearnedPrev = ""
+    @Volatile private var lastLearnedWord = ""
+
+    /** Метка начала сообщения в парах слов: так запоминается, с чего вы обычно начинаете. */
+    private const val STARTER = "<s>"
+
+    /**
+     * [starter] — слово набрано первым в сообщении или предложении (предыдущего слова нет). Вызывающий сам решает,
+     * когда это так: слова из плагинов и импорта сюда не должны попадать.
+     */
+    fun learn(lang: KeyboardLanguage, previous: String, word: String, boost: Int = 1, starter: Boolean = false) {
+        val orig = word.trim()
+        val w = orig.lowercase()
         if (w.length < 2 || !w.all(::isWordChar)) return
         val k = uKey(lang, w)
         userWords[k] = (userWords[k] ?: 0) + boost
+        touchRecent(k)
+        userVer++
         val p = previous.trim().lowercase()
         if (p.isNotEmpty() && p.all(::isWordChar)) {
             val key = "${lang.id}:$p|$w"
             userBigrams[key] = (userBigrams[key] ?: 0) + 1
+            touchRecent(key)
+            if (boost == 1) {
+                // «я не» → «знаю»: тройка, если предыдущее слово только что само было набрано после другого
+                val p2 = if (p == lastLearnedWord) lastLearnedPrev else ""
+                if (p2.isNotEmpty() && p2.all(::isWordChar)) {
+                    val tk = "${lang.id}:$p2 $p|$w"
+                    userBigrams[tk] = (userBigrams[tk] ?: 0) + 1
+                    touchRecent(tk)
+                }
+                lastLearnedPrev = p
+                lastLearnedWord = w
+            }
+        } else if (starter && p.isEmpty() && boost == 1) {
+            val sk = "${lang.id}:$STARTER|$w"
+            userBigrams[sk] = (userBigrams[sk] ?: 0) + 1
+            touchRecent(sk)
+            // новое сообщение: цепочка слов начинается заново
+            lastLearnedPrev = ""
+            lastLearnedWord = w
+        }
+        if (boost == 1) {
+            learnCaps(lang, orig, w, p.isNotEmpty())
+            noteSession(lang, w)
         }
         scheduleSave(3000L)
     }
@@ -948,6 +1012,8 @@ object WordPredictorEngine {
     fun forget(lang: KeyboardLanguage, word: String) {
         val w = word.trim().lowercase()
         userWords.remove(uKey(lang, w))
+        userCaps.remove(uKey(lang, w))
+        userVer++
         val suffix = "|$w"
         userBigrams.keys.filter { it.startsWith("${lang.id}:") && it.endsWith(suffix) }.forEach { userBigrams.remove(it) }
         scheduleSave(500L)
@@ -958,6 +1024,11 @@ object WordPredictorEngine {
     fun clearUserData() {
         userWords.clear()
         userBigrams.clear()
+        userRecent.clear()
+        userCaps.clear()
+        acApplied = 0
+        acUndone = 0
+        synchronized(session) { session.clear() }
         glideCache.clear()
         scheduleSave(0L)
     }
@@ -972,10 +1043,20 @@ object WordPredictorEngine {
                     val wj = JSONObject()
                     userWords.entries.sortedByDescending { it.value }.take(6000).forEach { wj.put(it.key, it.value) }
                     val bj = JSONObject()
-                    userBigrams.entries.sortedByDescending { it.value }.take(6000).forEach { bj.put(it.key, it.value) }
+                    userBigrams.entries.sortedByDescending { it.value }.take(9000).forEach { bj.put(it.key, it.value) }
+                    // the dates are kept only for pairs and words that are still learned
+                    val rj = JSONObject()
+                    userRecent.entries.filter { userBigrams.containsKey(it.key) || userWords.containsKey(it.key) }
+                        .sortedByDescending { it.value }.take(12000).forEach { rj.put(it.key, it.value) }
+                    val cj = JSONObject()
+                    userCaps.entries.sortedByDescending { capsCount(it.value) }.take(3000).forEach { cj.put(it.key, it.value) }
                     app.getSharedPreferences(DATA_PREFS, Context.MODE_PRIVATE).edit()
                         .putString(KEY_WORDS, wj.toString())
                         .putString(KEY_BIGRAMS, bj.toString())
+                        .putString(KEY_RECENT, rj.toString())
+                        .putString(KEY_CAPS, cj.toString())
+                        .putInt(KEY_AC_APPLIED, acApplied)
+                        .putInt(KEY_AC_UNDONE, acUndone)
                         .apply()
                 }
                 // копия в папку пользователя: переживает переустановку (не чаще раза в несколько минут)
@@ -983,6 +1064,254 @@ object WordPredictorEngine {
             }
         }
     }
+
+    // ------------------------------------------------------------------ 11.2.35: свежесть, регистр, беседа, строгость, путаница слов
+
+    private const val KEY_RECENT = "user_recent"
+    private const val KEY_CAPS = "user_caps"
+    private const val KEY_AC_APPLIED = "ac_applied"
+    private const val KEY_AC_UNDONE = "ac_undone"
+
+    /** "ru:слово" и "ru:я не|знаю" → день (с 1970 года), когда это набирали в последний раз. */
+    private val userRecent = ConcurrentHashMap<String, Int>()
+    /** "en:john" → "3|John": сколько раз слово набрано в середине предложения именно так. */
+    private val userCaps = ConcurrentHashMap<String, String>()
+
+    private fun today(): Int = (System.currentTimeMillis() / 86_400_000L).toInt()
+
+    private fun touchRecent(key: String) {
+        userRecent[key] = today()
+    }
+
+    /** 0.8…1.25: набранное сегодня весит больше, набранное месяцы назад — чуть меньше. Нет даты (старые данные) — 1. */
+    private fun recency(key: String): Float {
+        val day = userRecent[key] ?: return 1f
+        val age = (today() - day).coerceAtLeast(0)
+        return 0.8f + 0.45f * kotlin.math.exp(-0.099f * age)
+    }
+
+    // ---- слова этой беседы
+
+    private const val SESSION_MS = 15 * 60_000L
+    private const val SESSION_MAX = 60
+    private val session = java.util.ArrayDeque<String>()
+    private var sessionAt = 0L
+
+    private fun noteSession(lang: KeyboardLanguage, w: String) {
+        val now = System.currentTimeMillis()
+        synchronized(session) {
+            if (now - sessionAt > SESSION_MS) session.clear()
+            sessionAt = now
+            val k = uKey(lang, w)
+            session.remove(k)
+            session.addLast(k)
+            while (session.size > SESSION_MAX) session.removeFirst()
+        }
+    }
+
+    /** Слова, которые только что были в разговоре, подсказываются охотнее: о «клавиатуре» уже говорили. */
+    private fun sessionBonus(lang: KeyboardLanguage, w: String): Float = synchronized(session) {
+        if (session.isEmpty() || System.currentTimeMillis() - sessionAt > SESSION_MS) 0f
+        else if (session.contains(uKey(lang, w))) 0.6f else 0f
+    }
+
+    // ---- как вы пишете слово: имена, iPhone
+
+    private fun capsCount(v: String): Int = v.substringBefore('|').toIntOrNull() ?: 0
+    private fun capsForm(v: String): String = v.substringAfter('|')
+
+    private fun parseCaps(raw: String?, target: ConcurrentMap<String, String>) {
+        if (raw.isNullOrBlank()) return
+        runCatching {
+            val json = JSONObject(raw)
+            val keys = json.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                val v = json.getString(k)
+                if ('|' in v) target[k] = v
+            }
+        }
+    }
+
+    /** Заглавная буква в середине предложения — значит, слово вы пишете именно так (Алия, John, iPhone). */
+    private fun learnCaps(lang: KeyboardLanguage, orig: String, lower: String, midSentence: Boolean) {
+        if (!midSentence || orig.length < 2 || lower.startsWith("i'")) return
+        // КАПС — это крик или аббревиатура, а не написание слова
+        if (orig.all { it.isUpperCase() || !it.isLetter() }) return
+        val key = uKey(lang, lower)
+        val old = userCaps[key]
+        if (orig != lower) {
+            userCaps[key] = when {
+                old != null && capsForm(old) == orig -> "${min(50, capsCount(old) + 1)}|$orig"
+                old != null && capsCount(old) > 1 -> "${capsCount(old) - 1}|${capsForm(old)}"
+                else -> "1|$orig"
+            }
+        } else if (old != null) {
+            val n = capsCount(old) - 1
+            if (n <= 0) userCaps.remove(key) else userCaps[key] = "$n|${capsForm(old)}"
+        }
+    }
+
+    /** Написание, которое вы повторили хотя бы дважды. */
+    private fun learnedCase(lang: KeyboardLanguage, lower: String): String? {
+        val v = userCaps[uKey(lang, lower)] ?: return null
+        return if (capsCount(v) >= 2) capsForm(v) else null
+    }
+
+    // ---- осторожность по результатам
+
+    @Volatile private var acApplied = 0
+    @Volatile private var acUndone = 0
+
+    /** Клавиатура исправила слово (вызывает сервис). */
+    fun noteCorrectionApplied() {
+        acApplied++
+        if (acApplied > 200) {
+            acApplied /= 2
+            acUndone /= 2
+        }
+        scheduleSave(8000L)
+    }
+
+    private fun noteCorrectionRejected() {
+        acUndone++
+        scheduleSave(8000L)
+    }
+
+    /**
+     * Если больше пятой части исправлений вы отменяете, «обычный» режим работает как «осторожный».
+     * Настройка в приложении не меняется, и режим вернётся, когда отмен станет меньше.
+     */
+    internal fun effectiveStrength(strength: String): String =
+        if (strength == "NORMAL" && acApplied >= 25 && acUndone * 100 >= acApplied * 22) "SAFE" else strength
+
+    internal fun setAutoCorrectStats(applied: Int, undone: Int) {
+        acApplied = applied
+        acUndone = undone
+    }
+
+    // ---- слово верное, но не по соседним словам: their/there, тся/ться
+
+    private val ctxFix = ConcurrentHashMap<String, String>()
+
+    private val EN_CONFUSABLE: Map<String, List<String>> = mapOf(
+        "their" to listOf("there"), "there" to listOf("their"),
+        "then" to listOf("than"), "than" to listOf("then"),
+        "weather" to listOf("whether"), "whether" to listOf("weather"),
+        "loose" to listOf("lose"), "lose" to listOf("loose"),
+        "affect" to listOf("effect"), "effect" to listOf("affect")
+    )
+
+    /** После этих слов глагол стоит в неопределённой форме: «хочу учиться», «надо спать». */
+    private val RU_INFINITIVE_CUE = setOf(
+        "надо", "нужно", "нельзя", "можно", "чтобы", "пора", "лень", "предстоит", "приходится", "придётся", "пришлось",
+        "хочу", "хочешь", "хочет", "хотим", "хотите", "хотят", "хотел", "хотела", "хотели",
+        "могу", "можешь", "может", "можем", "можете", "могут", "должен", "должна", "должно", "должны",
+        "начал", "начала", "начали", "начало", "стал", "стала", "стали", "перестал", "перестала", "перестали",
+        "буду", "будешь", "будет", "будем", "будете", "будут", "умею", "умеешь", "умеет", "любит", "люблю", "любишь", "любят",
+        "собираюсь", "собирается", "пытаюсь", "решил", "решила", "решили", "успел", "успела", "успели", "продолжает", "продолжаю"
+    )
+
+    /** После этих слов — личная форма: «он учится», «она смеётся». */
+    private val RU_FINITE_CUE = setOf("он", "она", "оно", "кто")
+
+    private fun ctxCost(d: LangDict, p2: String, prev: String, w: String): Float {
+        var c = d.bigrams?.cost(prev, w) ?: -1f
+        if (p2.isNotEmpty()) {
+            val t = d.trigrams?.cost("$p2|$prev", w) ?: -1f
+            if (t >= 0f && (c < 0f || t < c)) c = t
+        }
+        return c
+    }
+
+    private fun ruSuffixFix(lower: String, d: LangDict, prev: String): String? {
+        if (lower.length < 5) return null
+        val alt = when {
+            lower.endsWith("тся") && prev in RU_INFINITIVE_CUE -> lower.dropLast(3) + "ться"
+            lower.endsWith("ться") && prev in RU_FINITE_CUE -> lower.dropLast(4) + "тся"
+            else -> return null
+        }
+        return alt.takeIf { d.rankOf(it) >= 0 }
+    }
+
+    /**
+     * Известное слово, которое по предыдущим словам не подходит, а его двойник подходит. Видны только слова слева,
+     * поэтому условия строгие: русское правило — по слову-подсказке («хочу учится» → «учиться»), английское — когда
+     * модель (с тройкой слов, если есть) считает двойника в разы вероятнее. Только в режиме «обычный».
+     */
+    private fun confusionFix(lower: String, lang: KeyboardLanguage, strength: String, prev: String): String? {
+        if (strength != "NORMAL" || prev.isEmpty() || lower.length < 3 || !lang.autoCorrect) return null
+        if (isPersonal(lang, lower) || userBigrams.containsKey("${lang.id}:$prev|$lower")) return null
+        val d = dictFor(lang) ?: return null
+        val fix: String? = when (lang.baseId) {
+            "ru" -> ruSuffixFix(lower, d, prev)
+            "en" -> {
+                val alts = EN_CONFUSABLE[lower] ?: return null
+                val p2 = prev2Local.get().orEmpty()
+                val c0 = ctxCost(d, p2, prev, lower)
+                var best: String? = null
+                var bestCost = Float.MAX_VALUE
+                for (a in alts) {
+                    val ca = ctxCost(d, p2, prev, a)
+                    if (ca < 0f || ca > Typo.confusionMaxCost || ca >= bestCost) continue
+                    // написанного после этих слов вообще не встречали — нужен только очень ожидаемый двойник
+                    if (c0 < 0f && ca > 2.5f) continue
+                    if (c0 >= 0f && c0 - ca < Typo.confusionMargin) continue
+                    best = a
+                    bestCost = ca
+                }
+                best
+            }
+            else -> null
+        }
+        if (fix != null) ctxFix[uKey(lang, lower)] = fix
+        return fix
+    }
+
+    // ---- латиницей по-русски: privet → привет
+
+    private val TRANSLIT: List<Pair<String, List<String>>> = listOf(
+        "shch" to listOf("щ"), "sch" to listOf("щ"), "yo" to listOf("ё", "е", "йо"), "yu" to listOf("ю"), "ya" to listOf("я"),
+        "ye" to listOf("е"), "zh" to listOf("ж"), "kh" to listOf("х"), "ts" to listOf("ц"), "ch" to listOf("ч"), "sh" to listOf("ш"),
+        "ey" to listOf("ей"), "iy" to listOf("ий"), "oy" to listOf("ой"), "ay" to listOf("ай"), "uy" to listOf("уй"),
+        "a" to listOf("а"), "b" to listOf("б"), "v" to listOf("в"), "g" to listOf("г"), "d" to listOf("д"), "e" to listOf("е", "э"),
+        "z" to listOf("з"), "i" to listOf("и"), "j" to listOf("й"), "k" to listOf("к"), "l" to listOf("л"), "m" to listOf("м"),
+        "n" to listOf("н"), "o" to listOf("о"), "p" to listOf("п"), "r" to listOf("р"), "s" to listOf("с"), "t" to listOf("т"),
+        "u" to listOf("у"), "f" to listOf("ф"), "h" to listOf("х"), "c" to listOf("к", "ц"), "y" to listOf("ы", "й"), "x" to listOf("кс"),
+        "q" to listOf("к"), "w" to listOf("в"), "'" to listOf("ь")
+    )
+
+    /**
+     * Незнакомое английское слово, набранное русскими звуками латиницей, как русское слово («spasibo» → «спасибо»).
+     * Только если вы пишете и по-русски (предыдущее слово русское или русских слов уже выучено много) и слово частое.
+     */
+    private fun translitWord(lower: String, lang: KeyboardLanguage, prev: String): String? {
+        if (lang.baseId != "en" || lower.length < 4 || lower.length > 24) return null
+        if (!lower.all { it in 'a'..'z' || it == '\'' }) return null
+        val ru = dicts["ru"] ?: return null
+        val bilingual = prev.any { isCyrillic(it) } || userWords.withPrefix("ru:").keys.take(20).size >= 20
+        if (!bilingual) return null
+        var best: String? = null
+        var bestRank = Int.MAX_VALUE
+        var combos = 0
+        fun walk(i: Int, acc: String) {
+            if (combos > 96) return
+            if (i >= lower.length) {
+                combos++
+                val r = ru.rankOf(acc)
+                if (r in 0 until bestRank && r < 12_000) {
+                    bestRank = r
+                    best = acc
+                }
+                return
+            }
+            val token = TRANSLIT.firstOrNull { lower.startsWith(it.first, i) } ?: return
+            for (o in token.second) walk(i + token.first.length, acc + o)
+        }
+        walk(0, "")
+        return best
+    }
+
 
     private fun userCount(lang: KeyboardLanguage, lower: String) = userWords[uKey(lang, lower)] ?: 0
 
@@ -1055,18 +1384,22 @@ object WordPredictorEngine {
             if (d != null) glideCache[code] = list
             list
         }
+        // слова пользователя меняются редко, а свайпов много: готовый список живёт, пока не выучено что-то новое
+        val ver = userVer
+        glideMerged[lang.id]?.let { if (it.first === base && it.second == ver) return it.third }
         val prefix = "${lang.id}:"
         val out = LinkedHashMap<String, Float>(base.size + 64)
         for ((w, p) in base) out[w] = p
-        for ((k, n) in userWords) {
-            if (!k.startsWith(prefix)) continue
+        for ((k, n) in userWords.withPrefix(prefix)) {
             val w = k.substring(prefix.length)
             if (w.length < 2 || !w.all { it.isLetter() || it == '\'' || it == '-' } || (n < LEARNED && w !in out)) continue
             // выученное слово — как одно из пары сотен самых частых, и тем частотнее, чем чаще набрано
             val pen = max(0f, 3f - kotlin.math.ln(1f + n))
             out[w] = min(out[w] ?: Float.MAX_VALUE, pen)
         }
-        return out.toList()
+        val merged = out.toList()
+        glideMerged[lang.id] = Triple(base, ver, merged)
+        return merged
     }
 
     /** Слово знакомо: есть в словаре любого загруженного языка с тем же алфавитом или набрано вами хотя бы дважды. */
@@ -1081,7 +1414,8 @@ object WordPredictorEngine {
     private fun applyCase(word: String, cap: Boolean, allCaps: Boolean): String = when {
         word.isEmpty() -> word
         allCaps -> word.uppercase()
-        cap -> word.replaceFirstChar { it.uppercase() }
+        // слово со своим написанием (iPhone, McDonald) не трогаем
+        cap -> if (word.drop(1).any { it.isUpperCase() }) word else word.replaceFirstChar { it.uppercase() }
         else -> word
     }
 
@@ -1113,6 +1447,7 @@ object WordPredictorEngine {
 
     fun rejectCorrection(lang: KeyboardLanguage, word: String) {
         rejectedUntil[uKey(lang, word.trim().lowercase())] = System.currentTimeMillis() + REJECT_MS
+        noteCorrectionRejected()
     }
 
     private fun baseLetter(c: Char): Char {
@@ -1172,6 +1507,10 @@ object WordPredictorEngine {
         @JvmField var realWordMaxEdit = 2.5f
         /** Слова частотнее этого места (предлоги, союзы) по контексту не меняются. */
         @JvmField var realWordMinRank = 300
+        /** their/there, then/than: the other word must cost at most this after the previous words... */
+        @JvmField var confusionMaxCost = 4.0f
+        /** ...and the typed word must be at least this much less likely (in nats; 3.0 is about 20 times). */
+        @JvmField var confusionMargin = 3.0f
         /** Сила контекста в продолжениях по префиксу. */
         @JvmField var ctxCompletion = 2.4f
         /** Исправление в другое слово может быть на столько менее вероятным, чем лучшее продолжение набранного. */
@@ -1233,10 +1572,14 @@ object WordPredictorEngine {
         val n = typed.length
         val m = dict.length
         if (n > 30 || m > 30) return Float.MAX_VALUE
-        var prev2 = FloatArray(m + 1)
-        var prev = FloatArray(m + 1)
+        // буферы на поток: расчёт идёт для сотен слов на каждое нажатие, раньше каждый раз создавались четыре массива
+        val buf: Array<FloatArray> = editBuffers.get()
+        var prev2 = buf[0]
+        var prev = buf[1]
+        var cur = buf[2]
+        val insCost = buf[3]
+        prev[0] = 0f
         // пропущенная буква: удвоенную («класный» → «классный») и мягкий знак пропускают чаще всего
-        val insCost = FloatArray(m + 1)
         for (j in 1..m) {
             val b = dict[j - 1]
             insCost[j] = when {
@@ -1246,7 +1589,6 @@ object WordPredictorEngine {
             }
             prev[j] = prev[j - 1] + insCost[j]
         }
-        var cur = FloatArray(m + 1)
         // перестановка смотрит на два ряда назад — выходим, только если оба ряда уже дороже лимита
         var prevMin = 0f
         for (i in 1..n) {
@@ -1281,11 +1623,20 @@ object WordPredictorEngine {
     private fun freqCost(rank: Int): Float = Typo.lmScale * kotlin.math.ln(1f + rank / Typo.lmK)
 
     /** Бонус за то, что слово часто идёт после предыдущего («доброе» → «утро»). */
-    private fun contextBonus(lang: KeyboardLanguage, prev: String, w: String): Float {
+    /** Pairs, trigrams and models for the previous words, plus a small push for words used in this conversation. */
+    private fun contextBonus(lang: KeyboardLanguage, prev: String, w: String): Float =
+        contextBonusPairs(lang, prev, w) + sessionBonus(lang, w)
+
+    private fun contextBonusPairs(lang: KeyboardLanguage, prev: String, w: String): Float {
         if (prev.isEmpty()) return 0f
         var bonus = 0f
         val n = userBigrams["${lang.id}:$prev|$w"] ?: 0
-        if (n > 0) bonus += min(2.5f, 0.9f + 0.6f * kotlin.math.ln(1f + n))
+        if (n > 0) bonus += min(2.5f, (0.9f + 0.6f * kotlin.math.ln(1f + n)) * recency("${lang.id}:$prev|$w"))
+        val q = prev2Local.get().orEmpty()
+        if (q.isNotEmpty()) {
+            val n3 = userBigrams["${lang.id}:$q $prev|$w"] ?: 0
+            if (n3 > 0) bonus += min(2.0f, (0.8f + 0.5f * kotlin.math.ln(1f + n3)) * recency("${lang.id}:$q $prev|$w"))
+        }
         val builtin = when (lang.baseId) {
             "ru" -> ruBigrams[prev]
             "en" -> enBigrams[prev]
@@ -1340,8 +1691,8 @@ object WordPredictorEngine {
             i++
         }
         val prefixKey = "${lang.id}:$p"
-        for ((k, n) in userWords) {
-            if (n < LEARNED || k.length <= prefixKey.length || !k.startsWith(prefixKey)) continue
+        for ((k, n) in userWords.withPrefix(prefixKey)) {
+            if (n < LEARNED || k.length <= prefixKey.length) continue
             val c = k[prefixKey.length]
             weights[c] = (weights[c] ?: 0f) + 0.01f * n
         }
@@ -1358,7 +1709,7 @@ object WordPredictorEngine {
     }
 
     /** Свои слова: набранное много раз дешевле. */
-    private fun userBonus(lang: KeyboardLanguage, w: String): Float = 0.8f * kotlin.math.ln(1f + userCount(lang, w))
+    private fun userBonus(lang: KeyboardLanguage, w: String): Float = 0.8f * kotlin.math.ln(1f + userCount(lang, w)) * recency(uKey(lang, w))
 
     private class Candidate(val word: String, val cost: Float, val score: Float, val rank: Int)
 
@@ -1687,7 +2038,9 @@ object WordPredictorEngine {
         touches: List<KeyTouch?>? = null
     ): String? {
         val clean = word.trim()
-        if (clean.length == 1) return singleLetterFix(clean, lang, strength, touches?.singleOrNull())
+        // если вы часто отменяете исправления, режим «обычный» сам становится осторожным (настройка не меняется)
+        val st = effectiveStrength(strength)
+        if (clean.length == 1) return singleLetterFix(clean, lang, st, touches?.singleOrNull())
         if (clean.length < 2) return null
         if (clean.any { it.isDigit() }) return null
         // аббревиатуры и слова с заглавной внутри (iPhone, ООО) не трогаем
@@ -1700,14 +2053,16 @@ object WordPredictorEngine {
         val prev = previous.trim().lowercase()
         // частая ошибка написания («пожалуста», «извени») — сразу, если вы сами так не пишете
         val fix = typoFix(lang, lower)
-            ?: if (isKnown(lower, lang)) rareWordFix(lower, lang, strength, prev, t) ?: realWordFix(lower, lang, strength, prev, t)
-            else correctionLower(lower, lang, strength, prev, t)
+            ?: if (isKnown(lower, lang)) rareWordFix(lower, lang, st, prev, t) ?: realWordFix(lower, lang, st, prev, t) ?: confusionFix(lower, lang, st, prev)
+            else correctionLower(lower, lang, st, prev, t)
         fix ?: return null
         return applyCase(properCase(lang, fix), clean.first().isUpperCase(), clean.length > 1 && clean.all { it.isUpperCase() })
     }
 
-    private fun properCase(lang: KeyboardLanguage, w: String): String =
-        if (w in (dictFor(lang)?.names ?: emptySet())) w.replaceFirstChar { it.uppercase() } else w
+    private fun properCase(lang: KeyboardLanguage, w: String): String {
+        learnedCase(lang, w.lowercase())?.let { return it }
+        return if (w in (dictFor(lang)?.names ?: emptySet())) w.replaceFirstChar { it.uppercase() } else w
+    }
 
     /**
      * Слово есть в словаре, но после предыдущего не встречается, а соседнее по клавишам — обычное продолжение
@@ -1763,6 +2118,8 @@ object WordPredictorEngine {
         if (!lang.keyPositions.containsKey(lower[0])) return own
         if (isRejected(uKey(lang, lower)) || learned(lang, lower) || isPersonal(lang, lower)) return own
         if (typoFix(lang, lower) != null) return own
+        // their/there, тся/ться: система считает слово верным, а по соседним словам оно не подходит
+        if (own != null && ctxFix[uKey(lang, lower)] == own.lowercase()) return own
         if ((systemMisses[lang.id]?.size ?: 0) >= 3) return own
         if (!sys.typo) {
             if (own != null && confident[uKey(lang, lower)] == true) {
@@ -1778,7 +2135,7 @@ object WordPredictorEngine {
         if (sys.recommended) return applyCase(first, cap, allCaps)
         if (own != null) return own
         // слово из своего словаря без уверенной рекомендации не трогаем
-        if (strength != "NORMAL" || lower.length < 3 || isKnown(lower, lang)) return null
+        if (effectiveStrength(strength) != "NORMAL" || lower.length < 3 || isKnown(lower, lang)) return null
         // без рекомендации первый вариант берём, только если это действительно близкая опечатка
         val limit = when {
             lower.length <= 4 -> 4.5f
@@ -1794,8 +2151,8 @@ object WordPredictorEngine {
     private fun completions(lower: String, lang: KeyboardLanguage, limit: Int, prev: String = ""): List<String> {
         val scored = HashMap<String, Float>()
         val prefix = "${lang.id}:$lower"
-        for ((k, n) in userWords) {
-            if (k.length > prefix.length && k.startsWith(prefix)) {
+        for ((k, n) in userWords.withPrefix(prefix)) {
+            if (k.length > prefix.length) {
                 val w = k.substring(lang.id.length + 1)
                 // случайно набранное один раз (часто — опечатка) в подсказки не лезет
                 if (n < LEARNED && dictFor(lang)?.rank?.containsKey(w) != true) continue
@@ -1859,7 +2216,7 @@ object WordPredictorEngine {
         cancelCheck.set(cancelled)
         prev2Local.set(previous2.trim().lowercase())
         return try {
-            predictInner(word, previous, undo, lang, capitalizeNext, strength, autoCorrect, touches, sys, wholeWord)
+            predictInner(word, previous, undo, lang, capitalizeNext, effectiveStrength(strength), autoCorrect, touches, sys, wholeWord)
         } catch (_: Cancelled) {
             null
         } finally {
@@ -1952,7 +2309,7 @@ object WordPredictorEngine {
             }
         }
         // забыли переключить раскладку — вариант на другом языке вместо последней подсказки
-        val switched = if (!known && fix == null) otherLayoutWord(lower, lang)?.let { applyCase(it, cap, allCaps) } else null
+        val switched = if (!known && fix == null) (otherLayoutWord(lower, lang) ?: translitWord(lower, lang, prevLower))?.let { applyCase(it, cap, allCaps) } else null
         val finalChips = if (switched != null) chips.dropLast(1) + SuggestionChipModel(switched, switched) else chips
         return PredictionSnapshot(finalChips, fix, clean, own, sys != null, known)
     }
@@ -1981,43 +2338,36 @@ object WordPredictorEngine {
         cap: Boolean
     ): PredictionSnapshot {
         val prev = previous.trim().lowercase()
-        val set = LinkedHashSet<String>()
+        val p2 = prev2Local.get().orEmpty()
+        // Every source adds points to a word; the three best words win. A word that your trigrams,
+        // your pairs and the model all like beats one that only one of them knows. Recent habits count a bit more.
+        val scores = LinkedHashMap<String, Float>()
         if (prev.isNotEmpty()) {
-            val prefix = "${lang.id}:$prev|"
-            // связка, набранная хотя бы дважды, — уже привычка, а не случайность
-            userBigrams.entries.asSequence()
-                .filter { it.key.startsWith(prefix) && it.value >= 2 }
-                .sortedByDescending { it.value }
-                .take(3)
-                .forEach { set.add(it.key.substringAfter('|')) }
-            // тройка слов: самое точное, что есть, — раньше разговорных пар и модели
-            val p2 = prev2Local.get().orEmpty()
-            if (p2.isNotEmpty()) dictFor(lang)?.trigrams?.next("$p2|$prev")?.forEach { w ->
-                if (set.size < 3 && w != prev) set.add(properCase(lang, w))
+            // the previous word is in the other language (an English phrase inside a Russian message): that language leads
+            val other = otherLanguage(lang)
+            val foreign = other != null && prev.any { it.isLetter() } && !sameScript(lang, prev) && sameScript(other, prev)
+            if (foreign && other != null) {
+                val od = dicts[other.dict ?: other.id]
+                if (od != null) gatherNext(other, od, prev, p2.takeIf { it.isNotEmpty() && sameScript(other, it) }.orEmpty(), 1.0f, scores)
             }
-            // ручной список разговорных пар: для английского он точнее модели Норвига, для русского модель из корпусов
-            // точнее — от ручного списка там берётся только первое слово («доброе» → «утро»), остальное по модели
-            val handmade = when (lang.baseId) {
-                "ru" -> ruBigrams[prev]?.take(1)
-                "en" -> enBigrams[prev]
-                else -> null
+            gatherNext(lang, dictFor(lang), prev, if (foreign) "" else p2, if (foreign) 0.5f else 1.0f, scores)
+        } else {
+            // с чего вы обычно начинаете сообщение: выученное раньше заготовок
+            for ((k, n) in userBigrams.withPrefix("${lang.id}:$STARTER|")) {
+                if (n < 2) continue
+                val w = k.substringAfter('|')
+                scores[w] = (scores[w] ?: 0f) + (3.0f + 0.8f * kotlin.math.ln(1f + n)) * recency(k)
             }
-            handmade?.forEach { if (set.size < 3) set.add(it) }
-            if (set.size < 3) dictFor(lang)?.bigrams?.next(prev)?.forEach { w ->
-                if (set.size < 3 && w != prev) set.add(properCase(lang, w))
-            }
-            if (set.size < 3 && lang.baseId == "ru") ruBigrams[prev]?.forEach { if (set.size < 3) set.add(it) }
-            // связки, набранные хотя бы раз
-            if (set.size < 3) userBigrams.entries.asSequence()
-                .filter { it.key.startsWith(prefix) }
-                .sortedByDescending { it.value }
-                .take(3)
-                .forEach { set.add(it.key.substringAfter('|')) }
+            SENTENCE_STARTERS[lang.id].orEmpty().forEachIndexed { i, w -> scores[w] = (scores[w] ?: 0f) + 1.0f - 0.2f * i }
+        }
+        val set = LinkedHashSet<String>()
+        for (e in scores.entries.sortedByDescending { it.value }) {
+            if (set.size >= 3) break
+            val w = properCase(lang, e.key)
+            if (w.isNotBlank()) set.add(w)
         }
         // остальное — самые частые слова языка, чтобы строка подсказок не стояла пустой («…»)
         if (set.size < 3) {
-            val starters = if (prev.isEmpty()) SENTENCE_STARTERS[lang.id].orEmpty() else emptyList()
-            for (w in starters) if (set.size < 3) set.add(w)
             val d = dictFor(lang)
             val top = d?.words
             if (top != null) {
@@ -2039,5 +2389,39 @@ object WordPredictorEngine {
         } else SuggestionChipModel(b, b)
         val right = if (undo != null) SuggestionChipModel(b, b) else SuggestionChipModel(c, c)
         return PredictionSnapshot(listOf(left, SuggestionChipModel(a, a, isPrimary = true), right), null, "")
+    }
+
+    /** Next-word evidence for one language, added into [out] (lowercase word → points). */
+    private fun gatherNext(lang: KeyboardLanguage, d: LangDict?, prev: String, p2: String, scale: Float, out: MutableMap<String, Float>) {
+        val local = LinkedHashMap<String, Float>()
+        fun add(w: String, points: Float) {
+            val key = w.lowercase()
+            if (key.isNotBlank()) local[key] = (local[key] ?: 0f) + points
+        }
+        // your own three-word phrases: the most exact thing learned
+        if (p2.isNotEmpty()) for ((k, n) in userBigrams.withPrefix("${lang.id}:$p2 $prev|")) {
+            if (n >= 2) add(k.substringAfter('|'), (3.0f + 0.8f * kotlin.math.ln(1f + n)) * recency(k))
+        }
+        // pairs typed at least twice are a habit; once is only a weak hint
+        for ((k, n) in userBigrams.withPrefix("${lang.id}:$prev|")) {
+            add(k.substringAfter('|'), if (n >= 2) (2.2f + 0.7f * kotlin.math.ln(1f + n)) * recency(k) else 0.5f * recency(k))
+        }
+        if (p2.isNotEmpty()) d?.trigrams?.next("$p2|$prev")?.forEachIndexed { i, w -> if (i < 8 && w != prev) add(w, 2.6f - 0.25f * i) }
+        // ручной список разговорных пар: для английского он точнее модели Норвига, для русского модель из корпусов
+        // точнее — от ручного списка там берётся только первое слово («доброе» → «утро»), остальное слабее
+        val handmade = when (lang.baseId) {
+            "ru" -> ruBigrams[prev]
+            "en" -> enBigrams[prev]
+            else -> null
+        }
+        handmade?.forEachIndexed { i, w -> add(w, if (lang.baseId == "ru" && i > 0) 0.9f - 0.1f * i else 1.9f - 0.2f * i) }
+        d?.bigrams?.next(prev)?.forEachIndexed { i, w -> if (i < 8 && w != prev) add(w, 1.7f - 0.2f * i) }
+        for ((w, points) in local) out[w] = (out[w] ?: 0f) + (points + sessionBonus(lang, w)) * scale
+    }
+
+    private fun otherLanguage(lang: KeyboardLanguage): KeyboardLanguage? = when (lang.baseId) {
+        "en" -> KeyboardLanguage.RU
+        "ru" -> KeyboardLanguage.EN
+        else -> null
     }
 }
