@@ -2,6 +2,12 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.31
+- Home screen redesign on phones: the pages are now compact two-column cards instead of long rows, so Home needs about half the scrolling. "What's new" stays as one big card at the top
+- Cards fade and slide in one after another when the app opens. It plays once per app run, so coming back to Home does not replay it. Cards squish a little and change shape when pressed
+- The language switcher moved from the top to the bottom of Home, so it no longer takes a big card on every visit
+- Tablets and the two-pane layout keep the list as before
+
 ## 11.2.30
 > ## ⚠️ READ THIS FIRST: 11.2.30 uses a new signing key
 >
