@@ -2,6 +2,9 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.35
+- The About page now shows this fork's author (PythonEather, linked to GitHub) and the fork's Telegram channel (t.me/PythonEather). A small line at the bottom credits the original project, Expressive Keyboard by kotlalipopus (MIT), and links to it
+
 ## 11.2.34
 - Next-word suggestions now rank by one combined score instead of a fixed order. Your own three-word phrases, your own word pairs, the built-in phrase list and the language models all add points, so a word that several of them agree on comes first
 - Recent habits count more: what you typed this week now outranks old habits. The keyboard remembers when each word and pair was last used (this is kept in the backup too)

@@ -805,6 +805,7 @@ internal val EN_STRINGS: Map<String, String> = hashMapOf(
     "ИИ по вашему ключу" to "AI with your key",
     "Автор:" to "Author:",
     "Канал:" to "Channel:",
+    "Основано на Expressive Keyboard от kotlalipopus (MIT)" to "Based on Expressive Keyboard by kotlalipopus (MIT)",
     "Обновления" to "Updates",
     "Проверить обновления" to "Check for updates",
     "Проверяю…" to "Checking…",

@@ -653,7 +653,7 @@ internal fun AuthorLine() {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     // две строки по центру: ник не переносится посреди слова, даже на узком экране и с крупным шрифтом
     @Composable
-    fun Link(title: String, handle: String) {
+    fun Link(title: String, handle: String, url: String) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
@@ -662,13 +662,20 @@ internal fun AuthorLine() {
             Text(tr(title), style = label, color = muted, maxLines = 1, softWrap = false)
             Text(
                 "@$handle", style = label, fontWeight = FontWeight.Bold, color = blue, maxLines = 1, softWrap = false,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { open("https://t.me/$handle") }.padding(horizontal = 6.dp, vertical = 4.dp)
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { open(url) }.padding(horizontal = 6.dp, vertical = 4.dp)
             )
         }
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Link("Автор:", "Shahedeer")
-        Link("Канал:", "materialyouboss")
+        Link("Автор:", "PythonEather", "https://github.com/PythonEather")
+        Link("Канал:", "PythonEather", "https://t.me/PythonEather")
+        // MIT: честная ссылка на оригинальный проект
+        Text(
+            tr("Основано на Expressive Keyboard от kotlalipopus (MIT)"), style = MaterialTheme.typography.bodySmall, color = muted,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                .clickable { open("https://github.com/kotlalipopus/Expressive-Keyboard") }.padding(horizontal = 6.dp, vertical = 6.dp)
+        )
     }
 }
 
@@ -703,9 +710,9 @@ internal fun AboutPage() {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Expressive Keyboard Pro", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = cs.onSurface)
                 Text(
-                    "@Shahedeer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = cs.primary,
+                    "@PythonEather", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = cs.primary,
                     modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable {
-                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/Shahedeer")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/PythonEather")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     }
                 )
                 Text("Material 3 Expressive", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
