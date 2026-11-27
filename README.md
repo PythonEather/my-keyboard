@@ -5,6 +5,10 @@
 > separately by [PythonEather](https://github.com/PythonEather). It has its own releases, version numbers and changes.
 > Bugs found here should be reported here, not to the original author.
 
+<p align="center">
+  <img src="docs/showcase.gif" width="360" alt="Expressive Keyboard Pro showcase">
+</p>
+
 ### What is different from the original
 
 **Plugins and mods**
