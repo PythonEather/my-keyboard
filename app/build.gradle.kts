@@ -23,8 +23,8 @@ android {
         applicationId = "com.pythoneather.expressivekeyboardpro"
         minSdk = 26
         targetSdk = 35
-        versionCode = 49
-        versionName = "11.2.27"
+        versionCode = 50
+        versionName = "11.2.28"
         // QuickJS is compiled with optimizations in every build type: debug builds used -O0 and ran scripts several times slower
         externalNativeBuild {
             ndkBuild {

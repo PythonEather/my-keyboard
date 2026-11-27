@@ -29,6 +29,11 @@
         <intent>
             <action android:name="android.service.textservice.SpellCheckerService" />
         </intent>
+        <!-- список приложений для тем по приложениям: только значки запуска, без всех пакетов -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application

@@ -139,6 +139,12 @@ import kotlin.math.sqrt
 // ============================================================================
 
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        // a look worn for an app or for the time of day must not leak into the Settings screen
+        KeyboardPrefs.setLookOverride(this, null)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         CrashLog.install(this)
         super.onCreate(savedInstanceState)
@@ -181,6 +187,10 @@ enum class SettingsPage(val title: String, val subtitle: String, val icon: Image
     LAYOUT("Свои места клавиш", "Поменяйте местами любые клавиши: буквы, цифры, пробел, запятую, эмодзи…", Icons.Rounded.SwapHoriz, ExpressiveShapePreset.SUNNY_8),
     LONG_PRESS("Символы при удержании", "Свои символы на любой клавише: ғ на «г», $ на «d»", Icons.Rounded.TouchApp, ExpressiveShapePreset.FLOWER_6),
     ANIMATIONS("Анимации", "Нажатие клавиш, свои анимации, скорость, подсказки и панели", Icons.Rounded.Animation, ExpressiveShapePreset.CLOVER_4),
+    EXTRAS("Extra effects", "Press shockwave, tilt parallax, typing glow, edge swipe for one hand, cursor ticks", Icons.Rounded.AutoAwesome, ExpressiveShapePreset.SUNNY_8),
+    AUTO_THEMES("Themes by app and time", "A theme for each app, and day and night themes by time or sunset", Icons.Rounded.DarkMode, ExpressiveShapePreset.FLOWER_6),
+    LAYOUT_PROFILES("Layout profiles", "Save size, position, DPI and gaps under a name, switch, and share a profile as a file", Icons.Rounded.Straighten, ExpressiveShapePreset.CLOVER_4),
+    TYPING_STATS("Typing stats", "Speed, streaks and most used words, kept on this phone only", Icons.Rounded.BarChart, ExpressiveShapePreset.COOKIE_12),
     TOOLBAR("Панель, эмодзи и иконки", "Кнопки панели инструментов, стиль эмодзи, свои иконки", Icons.Rounded.DragIndicator, ExpressiveShapePreset.FLOWER_6),
     LANGUAGES("Языки", "Раскладки, китайский и японский ввод, словари подсказок", Icons.Rounded.Language, ExpressiveShapePreset.COOKIE_12),
     MY_WORDS("Мой словарь", "Добавьте свои слова: с диакритикой, имена, термины", Icons.Rounded.MenuBook, ExpressiveShapePreset.SUNNY_8),
@@ -392,6 +402,10 @@ internal fun SettingsPageScaffold(
                     SettingsPage.THEMES -> ThemesPage(settings, onNavigate)
                     SettingsPage.THEME_EDITOR -> ThemeEditorPage(settings, onNavigate)
                     SettingsPage.ANIMATIONS -> AnimationsPage(settings)
+                    SettingsPage.EXTRAS -> ExtrasPage(settings)
+                    SettingsPage.AUTO_THEMES -> AutoThemesPage(settings)
+                    SettingsPage.LAYOUT_PROFILES -> LayoutProfilesPage()
+                    SettingsPage.TYPING_STATS -> TypingStatsPage(settings)
                     SettingsPage.COLORS -> ColorsPage(settings)
                     SettingsPage.SIZE -> KeyboardSizePage(settings)
                     SettingsPage.KEYS -> KeysPage(settings, onNavigate)
@@ -538,7 +552,7 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
         }
         if (!editingPins) {
             val looks = PluginSettingsLayout.arrange(
-                listOf(SettingsPage.SIZE, SettingsPage.KEYS, SettingsPage.THEMES, SettingsPage.COLORS, SettingsPage.ANIMATIONS), layout
+                listOf(SettingsPage.SIZE, SettingsPage.KEYS, SettingsPage.THEMES, SettingsPage.COLORS, SettingsPage.ANIMATIONS, SettingsPage.EXTRAS, SettingsPage.AUTO_THEMES, SettingsPage.LAYOUT_PROFILES), layout
             ).filter { it !in pins }
             if (looks.isNotEmpty()) SettingsSection("Внешний вид") {
                 for (p in looks) {
@@ -546,7 +560,7 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
                 }
             }
             val groups = listOf(
-                "Ввод" to listOf(SettingsPage.LANGUAGES, SettingsPage.GESTURES, SettingsPage.TYPING, SettingsPage.MY_WORDS, SettingsPage.FEEDBACK),
+                "Ввод" to listOf(SettingsPage.LANGUAGES, SettingsPage.GESTURES, SettingsPage.TYPING, SettingsPage.MY_WORDS, SettingsPage.FEEDBACK, SettingsPage.TYPING_STATS),
                 "Инструменты" to listOf(SettingsPage.LAYOUT, SettingsPage.TOOLBAR, SettingsPage.CLIPBOARD, SettingsPage.PLUGINS),
                 "Приложение" to listOf(SettingsPage.POWER, SettingsPage.BACKUP, SettingsPage.ABOUT)
             )

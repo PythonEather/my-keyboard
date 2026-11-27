@@ -648,6 +648,7 @@ internal fun KeyboardScreen(
     val bodyHeight = (settings.keyHeightDp * rowWeight + settings.rowSpacingDp * rowGaps).dp
     val trailColor = LocalSkin.current?.trail ?: palette.accent.copy(alpha = 0.85f)
     val density = LocalDensity.current
+    val edgeContext = LocalContext.current
     SideEffect {
         KeyboardGeometry.layer = layer
         KeyboardGeometry.density = density
@@ -694,6 +695,7 @@ internal fun KeyboardScreen(
             modifier = Modifier.fillMaxWidth()
                 .then(if (fullscreen) Modifier.align(Alignment.BottomCenter).onSizeChanged { keysPx = it.height } else Modifier)
                 .then(if (ModFx.layerActive) Modifier.modKeyboardLayer() else Modifier)
+                .edgeSwipeOneHand(settings, edgeContext, panel == ActivePanel.KEYBOARD && !settings.landscape)
                 .padding(horizontal = settings.sidePaddingDp.dp, vertical = gap),
             verticalArrangement = Arrangement.spacedBy(gap)
         ) {
@@ -744,6 +746,10 @@ internal fun KeyboardScreen(
         PressHighlightEffect(settings.pressHighlight)
         KeyPushEffect(settings)
         ButtonWashEffect(settings)
+        ShockwaveEffect(settings)
+        TiltParallaxEffect(settings)
+        ShockwaveLayer(settings.shockwave && settings.shockwaveRing, palette.accent)
+        TypingGlowLayer(settings, palette.accent)
         ScriptOverlayLayer()
         if (fullscreen) {
             ScreenPanelLayer(if (showKeys) keysPx else 0, palette, font)

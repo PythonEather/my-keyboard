@@ -663,6 +663,8 @@ class ComposeKeyboardService : InputMethodService(),
             kb.clipOffer = null
             ClipStore.clear(this)
         }
+        // the look for this app and this time of day: worn only while typing, nothing is saved
+        runCatching { AutoLook.update(this, KeyboardPrefs.current(this), info?.packageName.orEmpty()) }
         resetForInput(info, restarting)
         applyWindowColors()
         // подтип ввода (язык проверки правописания в приложении) — под текущий язык клавиатуры
@@ -731,6 +733,7 @@ class ComposeKeyboardService : InputMethodService(),
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
+        TypingHistory.flush(this)
         invalidatePredictions()
         inputGeneration++
         kb.inlineSuggestions = emptyList()
@@ -1463,6 +1466,7 @@ class ComposeKeyboardService : InputMethodService(),
         // латиница пиньиня/ромадзи — не слова языка
         if (Cjk.isCjk(kb.language.composer)) return
         if (!flags.isPassword && flags.suggestions && !privateNow) WordPredictorEngine.learn(kb.language, previous, word, boost)
+        if (settings.typingStats && !flags.isPassword && !privateNow) TypingHistory.word(this, word)
         if (ScriptHost.has("word") && !flags.isPassword && !privateNow) ScriptHost.emit("word", mapOf("word" to word, "previous" to previous))
     }
 
@@ -2131,7 +2135,11 @@ class ComposeKeyboardService : InputMethodService(),
     override fun keyDown(key: KeyModel) {
         val special = key.type == KeyType.SPACE || key.type == KeyType.ENTER ||
             key.type == KeyType.BACKSPACE || key.type == KeyType.SHIFT
-        HapticsEngine.keyPress(this, inputView, settings, special)
+        HapticsEngine.keyPress(this, inputView, settings, special, key.label.lowercase())
+        if (settings.typingGlow) TypingGlow.press()
+        if (settings.typingStats && !flags.isPassword && !privateNow &&
+            (key.type == KeyType.CHARACTER || key.type == KeyType.SPACE || key.type == KeyType.ENTER)
+        ) TypingHistory.press(this)
         if (ScriptHost.has("press") && !flags.isPassword) {
             ScriptHost.emit("press", mapOf("label" to KeyboardGeometry.nameOf(key), "type" to key.type.name.lowercase()))
         }
@@ -2313,7 +2321,7 @@ class ComposeKeyboardService : InputMethodService(),
         lastCommittedWord = ""
         expectUnknown()
         sendDownUpKeyEvents(if (direction > 0) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_LEFT)
-        HapticsEngine.tick(this, inputView, settings)
+        HapticsEngine.cursorTick(this, inputView, settings, false)
         schedulePredictions()
     }
 
@@ -2327,7 +2335,7 @@ class ComposeKeyboardService : InputMethodService(),
         lastCommittedWord = ""
         expectUnknown()
         sendDownUpKeyEvents(if (direction > 0) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP)
-        HapticsEngine.tick(this, inputView, settings)
+        HapticsEngine.cursorTick(this, inputView, settings, true)
         schedulePredictions()
     }
 

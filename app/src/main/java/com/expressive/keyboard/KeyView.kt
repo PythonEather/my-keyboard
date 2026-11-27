@@ -410,6 +410,7 @@ internal fun KeyView(
                     act.keyDown(k)
                     pressed = true
                     KeyPush.press(cell.coords, scope)
+                    Shockwave.press(cell.coords, scope)
                     if (k.type in ButtonWash.keyTypes) ButtonWash.play(wash, scope)
                     // размер самой клавиши — без половин промежутков вокруг
                     val inset = Offset(cGx / 2f, cGy / 2f)
@@ -932,6 +933,8 @@ internal fun KeyView(
                 Anims.apply(this, pressAnim, anim.value.coerceIn(-0.6f, 1.3f), press)
                 applyKeyFx(KeyboardGeometry.nameOf(key, label), key.type == KeyType.CHARACTER)
                 KeyPush.apply(this, cell.coords)
+                Shockwave.apply(this, cell.coords)
+                TiltParallax.apply(this)
             }
             // тени и свечение — снаружи кэшируемого слоя (иначе обрежутся по краю клавиши)
             .drawBehind {

@@ -667,6 +667,24 @@ internal fun FeedbackPage(settings: KeyboardSettings) {
                         HapticsEngine.previewSound(context, settings.copy(soundVolume = v))
                     }
                 )
+                SliderItem(
+                    icon = Icons.Rounded.GraphicEq, title = "Pitch per key",
+                    value = settings.soundKeyPitch, range = 0f..1f,
+                    format = { if (it < 0.03f) tr("Выкл") else "${(it * 100).roundToInt()}%" },
+                    onCommit = { v ->
+                        KeyboardPrefs.edit(context) { putFloat("sound_key_pitch", v) }
+                        HapticsEngine.previewSound(context, settings.copy(soundKeyPitch = v))
+                    }
+                )
+                SliderItem(
+                    icon = Icons.Rounded.GraphicEq, title = "Random change on every press",
+                    value = settings.soundWobble, range = 0f..1f,
+                    format = { if (it < 0.03f) tr("Выкл") else "${(it * 100).roundToInt()}%" },
+                    onCommit = { v ->
+                        KeyboardPrefs.edit(context) { putFloat("sound_wobble", v) }
+                        HapticsEngine.previewSound(context, settings.copy(soundWobble = v))
+                    }
+                )
                 ActionItem(
                     Icons.Rounded.AudioFile,
                     if (settings.customSoundVersion != 0L) "Сменить свой звук" else "Свой звук нажатия",

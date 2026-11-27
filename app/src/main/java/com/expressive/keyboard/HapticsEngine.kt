@@ -249,14 +249,15 @@ object HapticsEngine {
         playSound(context, s.copy(soundEnabled = true), special)
     }
 
-    private fun playSound(context: Context, s: KeyboardSettings, special: Boolean) {
+    private fun playSound(context: Context, s: KeyboardSettings, special: Boolean, keyName: String = "") {
         if (!s.soundEnabled) return
         if (ensurePool(context, s)) {
             val id = poolSounds.getOrElse(if (special) 1 else 0) { 0 }
             if (id != 0 && id in loaded) {
                 // чуть разная высота у соседних нажатий — звук не «пулемётный»
                 val custom = poolKey.startsWith("custom:")
-                val rate = (if (special && custom) 0.92f else 1f) * (0.97f + jitter.nextFloat() * 0.06f)
+                // soundKeyPitch: every key has its own small pitch; soundWobble: how much each press changes (0.5 = the old plus or minus 3%)
+                val rate = (if (special && custom) 0.92f else 1f) * KeyPitch.rate(keyName, s.soundKeyPitch, s.soundWobble, jitter.nextFloat())
                 runCatching { pool?.play(id, s.soundVolume, s.soundVolume, 1, 0, rate) }
             } else if (id != 0) {
                 pending = Triple(id, s.soundVolume, android.os.SystemClock.uptimeMillis())
@@ -272,8 +273,8 @@ object HapticsEngine {
         worker.post { runCatching { audio?.playSoundEffect(fx, vol) } }
     }
 
-    fun keyPress(context: Context, view: View?, s: KeyboardSettings, special: Boolean) {
-        playSound(context, s, special)
+    fun keyPress(context: Context, view: View?, s: KeyboardSettings, special: Boolean, keyName: String = "") {
+        playSound(context, s, special, keyName)
         if (!s.hapticsEnabled) return
         runCatching {
             val v = motor(context)
@@ -311,6 +312,35 @@ object HapticsEngine {
                     play(v, VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
                 } else oneShot(v, 7L, 80)
             } else view?.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        }
+    }
+
+    /**
+     * Tick for the space bar cursor: one small vibration for every character ([line] false) or line ([line] true) the cursor
+     * moves. Can be switched off, and has three strengths. Lines feel one step stronger than characters.
+     */
+    fun cursorTick(context: Context, view: View?, s: KeyboardSettings, line: Boolean) {
+        if (!s.spaceTicks || !s.hapticsEnabled) return
+        if (line && !s.spaceTickLines) return
+        runCatching {
+            val v = motor(context)
+            if (v == null) {
+                view?.performHapticFeedback(if (line) HapticFeedbackConstants.KEYBOARD_TAP else HapticFeedbackConstants.CLOCK_TICK)
+                return
+            }
+            val level = when (s.spaceTickStrength) {
+                "SOFT" -> 0
+                "STRONG" -> 2
+                else -> 1
+            } + if (line) 1 else 0
+            val q = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+            when {
+                // the lightest tick is a very short, quiet pulse, softer than the system tick
+                level == 0 -> oneShot(v, 4L, 40)
+                level == 1 -> if (q) play(v, VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK)) else oneShot(v, 7L, 80)
+                level == 2 -> if (q) play(v, VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)) else oneShot(v, 12L, 140)
+                else -> if (q) play(v, VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK)) else oneShot(v, 20L, 200)
+            }
         }
     }
 

@@ -19,12 +19,14 @@ enum class KeySoundStyle(val id: String, val title: String) {
     WOOD("WOOD", "Дерево"),
     MECHANICAL("MECHANICAL", "Механика"),
     GLASS("GLASS", "Стекло"),
+    TYPEWRITER("TYPEWRITER", "Typewriter"),
+    CLICKY("CLICKY", "Clicky"),
     CUSTOM("CUSTOM", "Свой файл");
 
     companion object {
         fun fromId(id: String?) = entries.firstOrNull { it.id == id } ?: SYSTEM
         /** Синтезированные — то, что можно выбрать без файла. */
-        val synthesized = listOf(SOFT, BUBBLE, WOOD, MECHANICAL, GLASS)
+        val synthesized = listOf(SOFT, BUBBLE, WOOD, MECHANICAL, GLASS, TYPEWRITER, CLICKY)
     }
 }
 
@@ -52,6 +54,8 @@ object KeySounds {
             KeySoundStyle.WOOD -> 90
             KeySoundStyle.MECHANICAL -> 70
             KeySoundStyle.GLASS -> 160
+            KeySoundStyle.TYPEWRITER -> 110
+            KeySoundStyle.CLICKY -> 60
             else -> 40
         } * (if (special) 1.2f else 1f)
         val n = (RATE * lenMs / 1000f).toInt()
@@ -106,6 +110,29 @@ object KeySounds {
                     val env = min(1f, t / 0.002f)
                     (sin(2 * PI * f * t).toFloat() * exp(-t / 0.05f) + 0.35f * sin(2 * PI * f * 2.0 * t).toFloat() * exp(-t / 0.025f) +
                         0.2f * sin(2 * PI * f * 2.98 * t).toFloat() * exp(-t / 0.012f)) * env
+                }
+                // пишущая машинка: удар молоточка по бумаге (шум), глухой стук каретки и звенящий металл
+                KeySoundStyle.TYPEWRITER -> {
+                    val noise = rnd.nextFloat() * 2f - 1f
+                    lp += 0.35f * (noise - lp)
+                    lp2 += 0.05f * (noise - lp2)
+                    val strike = (lp - lp2) * exp(-t / 0.004f)
+                    val thunk = sin(2 * PI * 150f * pitch * t).toFloat() * exp(-t / 0.02f) * 0.8f
+                    val f = 2300f * pitch
+                    val ring = (sin(2 * PI * f * t).toFloat() * 0.35f + sin(2 * PI * f * 2.43 * t).toFloat() * 0.18f) * exp(-t / 0.014f)
+                    (1.2f * strike + thunk + ring) * min(1f, t / 0.0004f)
+                }
+                // громкий переключатель (синий): щелчок при нажатии, второй при возврате и тонкий звон
+                KeySoundStyle.CLICKY -> {
+                    val noise = rnd.nextFloat() * 2f - 1f
+                    lp += 0.6f * (noise - lp)
+                    lp2 += 0.12f * (noise - lp2)
+                    val hp = lp - lp2
+                    val click1 = hp * exp(-t / 0.0012f)
+                    val t2 = t - 0.012f
+                    val click2 = if (t2 < 0f) 0f else hp * exp(-t2 / 0.0015f) * 0.7f
+                    val ping = sin(2 * PI * 3400f * pitch * t).toFloat() * exp(-t / 0.004f) * 0.35f
+                    1.4f * click1 + 1.2f * click2 + ping
                 }
                 else -> 0f
             }

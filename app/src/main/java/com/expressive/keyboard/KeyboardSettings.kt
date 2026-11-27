@@ -290,6 +290,49 @@ data class KeyboardSettings(
     val buttonWash: Boolean = true,
     val buttonWashSpeed: Float = 1f,
     val buttonWashStrength: Float = 0.55f,
+    /** Press shockwave: a soft ring spreads from the pressed key and nudges the keys it passes. */
+    val shockwave: Boolean = false,
+    val shockwaveSpeed: Float = 1f,
+    val shockwaveStrength: Float = 0.5f,
+    val shockwaveReach: Float = 3.5f,
+    val shockwaveRipple: Float = 3f,
+    val shockwaveRing: Boolean = true,
+    /** Tilt parallax: the keys shift a little when the phone tilts, so the keyboard looks 3D. */
+    val tiltParallax: Boolean = false,
+    val tiltParallaxStrength: Float = 1f,
+    val tiltParallaxInvert: Boolean = false,
+    /** Typing glow: a neon strip along the keyboard that gets brighter and faster the quicker you type. */
+    val typingGlow: Boolean = false,
+    val typingGlowEdge: String = "TOP",
+    val typingGlowColor: String = "ACCENT",
+    val typingGlowMax: Float = 0.8f,
+    val typingGlowFullCps: Float = 7f,
+    val typingGlowCalm: Float = 2f,
+    val typingGlowThickness: Float = 4f,
+    /** Edge swipe: swipe in from the screen edge to shrink the keyboard to that side (one-hand mode). */
+    val edgeSwipe: Boolean = false,
+    val edgeSwipeZoneDp: Float = 18f,
+    val edgeSwipeDistanceDp: Float = 64f,
+    val edgeSwipeOpposite: String = "EXIT",
+    val edgeSwipeHaptic: Boolean = true,
+    /** Themes by app and by time of day (the looks themselves are saved in `look_presets`). */
+    val perAppThemes: Boolean = false,
+    val dayNight: Boolean = false,
+    val dayNightMode: String = "TIMES",
+    val dayLook: String = "",
+    val nightLook: String = "",
+    val dayStartMin: Int = 420,
+    val nightStartMin: Int = 1140,
+    val sunLatLon: String = "",
+    /** Pitch of key sounds: how far the keys differ from each other and how much each press wobbles. */
+    val soundKeyPitch: Float = 0f,
+    val soundWobble: Float = 0.5f,
+    /** Space bar cursor ticks: a small vibration for every character or line the cursor moves. */
+    val spaceTicks: Boolean = true,
+    val spaceTickStrength: String = "NORMAL",
+    val spaceTickLines: Boolean = true,
+    /** Typing stats page: counts speed, streaks and most used words on this phone only. */
+    val typingStats: Boolean = false,
     /** Emoji key in the bottom row: width (1 = as before), icon size and place: DEFAULT | START | AFTER_SPACE. */
     val emojiKeyWidth: Float = 1f,
     val emojiKeyIconScale: Float = 1f,
@@ -523,7 +566,7 @@ object KeyboardPrefs {
             val previousHeight = runCatching { sp.getFloat("key_height_dp", 54f) }.getOrDefault(54f)
             sp.edit().putFloat("float_key_height_dp", (previousHeight * 0.86f).coerceIn(28f, 68f)).apply()
         }
-        state.value = read(sp)
+        state.value = read(view(sp))
         I18n.apply(state.value.appLanguage)
         val l = SharedPreferences.OnSharedPreferenceChangeListener { p, _ ->
             // одна правка меняет десятки ключей (тема, сброс, импорт), а слушатель зовётся на каждый:
@@ -537,6 +580,20 @@ object KeyboardPrefs {
         sp.registerOnSharedPreferenceChangeListener(l)
     }
 
+    /** A look worn for the app being typed in or for the time of day: some theme values replaced while the keyboard reads its settings. */
+    @Volatile private var lookOverride: Map<String, Any?>? = null
+
+    private fun view(p: SharedPreferences): SharedPreferences = lookOverride?.let { OverlayPrefs(p, it) } ?: p
+
+    /** Wears a look (null = your own theme). Nothing is written to the preferences. Call on the main thread. */
+    fun setLookOverride(context: Context, values: Map<String, Any?>?) {
+        ensureInit(context)
+        if (lookOverride == values) return
+        lookOverride = values
+        runCatching { read(view(prefs(context))) }.onSuccess { if (it != state.value) state.value = it }
+        I18n.apply(state.value.appLanguage)
+    }
+
     @Volatile private var dirty = false
     private val mainHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
 
@@ -544,7 +601,7 @@ object KeyboardPrefs {
         if (!dirty) return
         dirty = false
         // значение не того типа (из старой копии) не должно оставлять настройки застывшими
-        runCatching { read(p) }.onSuccess { if (it != state.value) state.value = it }
+        runCatching { read(view(p)) }.onSuccess { if (it != state.value) state.value = it }
         I18n.apply(state.value.appLanguage)
     }
 
@@ -678,6 +735,41 @@ object KeyboardPrefs {
             buttonWash = p.getBoolean("button_wash", true),
             buttonWashSpeed = p.getFloat("button_wash_speed", 1f).coerceIn(0.5f, 2.5f),
             buttonWashStrength = p.getFloat("button_wash_strength", 0.55f).coerceIn(0.1f, 1f),
+            shockwave = p.getBoolean("shockwave", false),
+            shockwaveSpeed = p.getFloat("shockwave_speed", 1f).coerceIn(0.5f, 2.5f),
+            shockwaveStrength = p.getFloat("shockwave_strength", 0.5f).coerceIn(0.1f, 1f),
+            shockwaveReach = p.getFloat("shockwave_reach", 3.5f).coerceIn(1.5f, 6f),
+            shockwaveRipple = p.getFloat("shockwave_ripple", 3f).coerceIn(0f, 8f),
+            shockwaveRing = p.getBoolean("shockwave_ring", true),
+            tiltParallax = p.getBoolean("tilt_parallax", false),
+            tiltParallaxStrength = p.getFloat("tilt_parallax_strength", 1f).coerceIn(0.2f, 2.5f),
+            tiltParallaxInvert = p.getBoolean("tilt_parallax_invert", false),
+            typingGlow = p.getBoolean("typing_glow", false),
+            typingGlowEdge = (p.getString("typing_glow_edge", "TOP") ?: "TOP").takeIf { it == "BOTTOM" } ?: "TOP",
+            typingGlowColor = (p.getString("typing_glow_color", "ACCENT") ?: "ACCENT").takeIf { it == "RAINBOW" } ?: "ACCENT",
+            typingGlowMax = p.getFloat("typing_glow_max", 0.8f).coerceIn(0.2f, 1f),
+            typingGlowFullCps = p.getFloat("typing_glow_full_cps", 7f).coerceIn(3f, 14f),
+            typingGlowCalm = p.getFloat("typing_glow_calm", 2f).coerceIn(0.5f, 6f),
+            typingGlowThickness = p.getFloat("typing_glow_thickness", 4f).coerceIn(2f, 12f),
+            edgeSwipe = p.getBoolean("edge_swipe", false),
+            edgeSwipeZoneDp = p.getFloat("edge_swipe_zone_dp", 18f).coerceIn(10f, 40f),
+            edgeSwipeDistanceDp = p.getFloat("edge_swipe_distance_dp", 64f).coerceIn(30f, 140f),
+            edgeSwipeOpposite = (p.getString("edge_swipe_opposite", "EXIT") ?: "EXIT").takeIf { it == "SWITCH" } ?: "EXIT",
+            edgeSwipeHaptic = p.getBoolean("edge_swipe_haptic", true),
+            perAppThemes = p.getBoolean("per_app_themes", false),
+            dayNight = p.getBoolean("day_night", false),
+            dayNightMode = (p.getString("day_night_mode", "TIMES") ?: "TIMES").takeIf { it == "SUNSET" || it == "SYSTEM" } ?: "TIMES",
+            dayLook = p.getString("day_look", "") ?: "",
+            nightLook = p.getString("night_look", "") ?: "",
+            dayStartMin = p.getInt("day_start_min", 420).coerceIn(0, 1439),
+            nightStartMin = p.getInt("night_start_min", 1140).coerceIn(0, 1439),
+            sunLatLon = p.getString("sun_lat_lon", "") ?: "",
+            soundKeyPitch = p.getFloat("sound_key_pitch", 0f).coerceIn(0f, 1f),
+            soundWobble = p.getFloat("sound_wobble", 0.5f).coerceIn(0f, 1f),
+            spaceTicks = p.getBoolean("space_ticks", true),
+            spaceTickStrength = (p.getString("space_tick_strength", "NORMAL") ?: "NORMAL").takeIf { it == "SOFT" || it == "STRONG" } ?: "NORMAL",
+            spaceTickLines = p.getBoolean("space_tick_lines", true),
+            typingStats = p.getBoolean("typing_stats", false),
             emojiKeyWidth = p.getFloat("emoji_key_width", 1f).coerceIn(0.7f, 2.2f),
             emojiKeyIconScale = p.getFloat("emoji_key_icon_scale", 1f).coerceIn(0.7f, 1.8f),
             emojiKeyPos = (p.getString("emoji_key_pos", "DEFAULT") ?: "DEFAULT").takeIf { it == "START" || it == "AFTER_SPACE" } ?: "DEFAULT",
@@ -799,22 +891,22 @@ object KeyboardPrefs {
             "key_height_dp", "header_height_dp", "landscape_scale", "corner_radius_dp", "key_spacing_dp", "row_spacing_dp", "bottom_offset_dp",
             "wave_amplitude_percent", "vibration_ms", "vibration_amplitude", "long_press_ms", "enter_hold_ms", "key_opacity", "bg_transparency", "bg_dim",
             "photo_zoom", "photo_width", "photo_height", "photo_x", "photo_y",
-            "bg_blur_dp", "window_blur_dp", "key_label_scale", "side_padding_dp", "one_handed_w", "float_width", "float_key_height_dp", "flick_sensitivity", "space_cursor_speed", "space_line_speed", "enter_width", "number_row_scale", "press_animation", "press_highlight", "key_push_strength", "key_push_rings", "key_push_bounce", "key_push_speed", "key_push_squash", "button_wash_speed", "button_wash_strength", "emoji_key_width", "emoji_key_icon_scale", "page_switch_anim", "sound_volume", "anim_speed"
+            "bg_blur_dp", "window_blur_dp", "key_label_scale", "side_padding_dp", "one_handed_w", "float_width", "float_key_height_dp", "flick_sensitivity", "space_cursor_speed", "space_line_speed", "enter_width", "number_row_scale", "press_animation", "press_highlight", "key_push_strength", "key_push_rings", "key_push_bounce", "key_push_speed", "key_push_squash", "button_wash_speed", "button_wash_strength", "shockwave_speed", "shockwave_strength", "shockwave_reach", "shockwave_ripple", "tilt_parallax_strength", "typing_glow_max", "typing_glow_full_cps", "typing_glow_calm", "typing_glow_thickness", "edge_swipe_zone_dp", "edge_swipe_distance_dp", "sound_key_pitch", "sound_wobble", "emoji_key_width", "emoji_key_icon_scale", "page_switch_anim", "sound_volume", "anim_speed"
         ).forEach { put(it, 'f') }
         listOf(
             "wave_count", "seed_color", "color_background", "color_key", "color_key_text", "color_func",
-            "color_func_text", "color_accent", "color_accent_text", "font_weight", "clipboard_size", "custom_dpi"
+            "color_func_text", "color_accent", "color_accent_text", "font_weight", "clipboard_size", "custom_dpi", "day_start_min", "night_start_min"
         ).forEach { put(it, 'i') }
         listOf(
             "dynamic_shadow", "bg_frost_static", "show_number_row", "show_key_borders", "key_preview", "key_background", "emoji_return_keyboard", "auto_capitalize", "auto_correct_enabled",
             "double_space_period", "haptics_enabled", "vibrate_on_release", "strong_special_keys", "sound_enabled",
             "show_hints", "show_header", "number_pad", "floating_keyboard", "liquid_glass", "glass_merge", "myanmar_visual", "show_suggestions", "inline_calculator", "enter_hold_send", "show_mic_button", "suggestions_full_width", "show_emoji_key", "show_globe_key", "panel_animations",
-            "backspace_swipe", "swipe_down_hide", "clipboard_history", "clip_offer_top", "key_push", "button_wash", "instant_input", "glide_typing", "glide_trail", "swipe_up_hint",
+            "backspace_swipe", "swipe_down_hide", "clipboard_history", "clip_offer_top", "key_push", "button_wash", "shockwave", "shockwave_ring", "tilt_parallax", "tilt_parallax_invert", "typing_glow", "edge_swipe", "edge_swipe_haptic", "per_app_themes", "day_night", "space_ticks", "space_tick_lines", "typing_stats", "instant_input", "glide_typing", "glide_trail", "swipe_up_hint",
             "space_long_press", "auto_pair", "incognito", "dict_auto_download", "punctuation_keys", "smart_punctuation",
             "system_spellcheck", "edit_bar", "auto_space_punct", "eco_mode", "eco_press", "eco_panels", "eco_blur", "eco_trail", "eco_preview", "eco_haptics", "eco_sound", "eco_suggestions", "dash_merge", "clip_screenshots", "correct_everywhere", "dynamic_zones", "ai_voice_cleanup", "tools_button", "pinned_tools", "landscape_split"
         ).forEach { put(it, 'b') }
         listOf(
-            "theme_mode", "accent_shape_preset", "haptic_mode", "font_style", "color_source", "one_handed", "space_swipe", "photo_fit", "key_push_mode", "emoji_key_pos",
+            "theme_mode", "accent_shape_preset", "haptic_mode", "font_style", "color_source", "one_handed", "space_swipe", "photo_fit", "key_push_mode", "emoji_key_pos", "typing_glow_edge", "typing_glow_color", "edge_swipe_opposite", "day_night_mode", "space_tick_strength",
             "eco_when", "globe_long_press", "tools_long_press", "window_blur", "hold_mode", "ai_provider", "space_long_action", "languages", "auto_correct_strength", "translate_target", "gemini_model", "anthropic_model", "openai_model", "groq_model", "openrouter_model", "toolbar_order", "toolbar_hidden", "user_layouts",
             "space_left_key", "space_right_key", "mic_action", "popup_style", "key_variants", "sound_style", "emoji_style", "clipboard_keep", "app_language", "design_style", "shape_amount", "skin_options", "anim_press", "anim_popup", "anim_panel", "anim_panel_cfg", "anim_open", "anim_open_cfg", "custom_anims", "lang_layouts"
         ).forEach { put(it, 's') }

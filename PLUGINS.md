@@ -1082,14 +1082,20 @@ They are applied by the "Apply look" button. The keys are the same as in the set
 
 Floating-point numbers: `key_height_dp`, `corner_radius_dp`, `key_spacing_dp`, `row_spacing_dp`, `bottom_offset_dp`,
 `side_padding_dp`, `key_label_scale`, `key_opacity`, `press_animation`, `press_highlight`, `page_switch_anim`, `long_press_ms`, `vibration_ms`,
-`vibration_amplitude`, `bg_dim`, `bg_blur_dp`, `one_handed_width`, `wave_amplitude_percent`, `sound_volume`.
+`vibration_amplitude`, `bg_dim`, `bg_blur_dp`, `one_handed_width`, `wave_amplitude_percent`, `sound_volume`, `shockwave_speed`,
+`shockwave_strength`, `shockwave_reach`, `shockwave_ripple`, `tilt_parallax_strength`, `typing_glow_max`, `typing_glow_full_cps`,
+`typing_glow_calm`, `typing_glow_thickness`, `edge_swipe_zone_dp`, `edge_swipe_distance_dp`, `sound_key_pitch`, `sound_wobble`.
 Integers and colors (`"#hex"`): `color_background`, `color_key`, `color_key_text`, `color_func`, `color_func_text`,
-`color_accent`, `color_accent_text`, `seed_color`, `wave_count`, `font_weight`, `clipboard_size`.
+`color_accent`, `color_accent_text`, `seed_color`, `wave_count`, `font_weight`, `clipboard_size`, `day_start_min`, `night_start_min`
+(minutes after midnight).
 Yes/no: `show_number_row`, `show_key_borders`, `key_preview`, `show_hints`, `show_suggestions`, `show_mic_button`,
 `show_emoji_key`, `show_globe_key`, `panel_animations`, `auto_capitalize`, `auto_correct_enabled`,
 `double_space_period`, `haptics_enabled`, `vibrate_on_release`, `strong_special_keys`, `sound_enabled`,
 `backspace_swipe`, `clipboard_history`, `instant_input`, `glide_typing`, `glide_trail`, `swipe_up_hint`,
-`space_long_press`, `auto_pair`, `incognito`.
+`space_long_press`, `auto_pair`, `incognito`, `shockwave`, `shockwave_ring`, `tilt_parallax`, `tilt_parallax_invert`, `typing_glow`,
+`edge_swipe`, `edge_swipe_haptic`, `per_app_themes`, `day_night`, `space_ticks`, `space_tick_lines`, `typing_stats`.
+Text choices: `typing_glow_edge` (`TOP`, `BOTTOM`), `typing_glow_color` (`ACCENT`, `RAINBOW`), `edge_swipe_opposite` (`EXIT`, `SWITCH`),
+`day_night_mode` (`TIMES`, `SUNSET`, `SYSTEM`), `space_tick_strength` (`SOFT`, `NORMAL`, `STRONG`).
 Strings: `theme_mode`, `accent_shape_preset`, `haptic_mode`, `font_style`, `color_source`, `one_handed`, `space_swipe`.
 
 ## variants: what appears on long press

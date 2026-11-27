@@ -28,6 +28,12 @@
 - Press highlight slider (turn the color change of a pressed key down or off) and a soft fade between letters, numbers and symbols
 - Your own plugins can live in [`plugins/`](plugins): the GitHub build runs each one in a Node mock of `kb` and compiles its shaders, so a broken plugin fails the build before you install it
 
+**Effects and tools (Settings > Extra effects)**
+- Press shockwave, tilt parallax, typing speed glow, and an edge swipe for one-hand mode, each with its own switch and sliders
+- Themes by app and by time of day (day and night, at sunset or with system dark mode), without changing your own theme
+- Layout profiles: save size, position, DPI and gaps under a name, switch, and share one as a file
+- Typewriter and Clicky sounds, pitch per key, cursor ticks on the space bar, and a typing stats page that stays on the phone
+
 **Look**
 - Dynamic shadow: key shadows lean away from the tilt of the phone (Settings → Colors and background)
 - Static frosted glass: the background picture is blurred once instead of live, on any Android version

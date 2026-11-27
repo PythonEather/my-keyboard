@@ -588,7 +588,7 @@ object ScriptHost {
         if (!shown) ModFx.clearPointers()
         val usable = shown && !privateMode
         val nativeTilt = ModFx.usesTilt() || ModFx.shaderItems || ModFx.glItems || ModFx.post != null
-        ModSensors.sync(ctx, shown && (nativeTilt || DynShadow.enabled) || usable && listens("tilt"), usable && listens("gyro"), usable && listens("shake"))
+        ModSensors.sync(ctx, shown && (nativeTilt || DynShadow.enabled || DynShadow.parallaxOn) || usable && listens("tilt"), usable && listens("gyro"), usable && listens("shake"))
         ModAudio.sync(ctx, usable && !voiceBusy && mods.values.any { it.audio && it.has("microphone") })
         ModFx.usesPointer(!privateMode && listens("pointer"))
         MediaBridge.sync(ctx, usable && listens("media"))
