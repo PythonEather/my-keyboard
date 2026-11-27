@@ -12,6 +12,8 @@ dist/
 keystore/
 *.jks
 *.keystore
+*.p12
+*.pfx
 !signing/ci-debug.keystore
 
 # файлы ИИ-ассистентов — только локально, не в репозиторий

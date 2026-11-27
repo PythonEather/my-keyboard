@@ -51,15 +51,56 @@ jobs:
         if: steps.exists.outputs.found == 'false'
         uses: ./.github/actions/android-setup
 
-      - name: Use the fixed signing key (APKs update in place)
+      # Release key: stored only in GitHub secrets (Settings > Secrets and variables > Actions).
+      #   KEYSTORE_B64 = the .p12 file as one line of text:  base64 -w0 ek-release.p12
+      #   KEY_PASSWORD = its password (the key uses the same password as the file)
+      # The values are filled in by GitHub while this job runs. They never appear in the code.
+      - name: Load the release key from GitHub secrets
         if: steps.exists.outputs.found == 'false'
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          mkdir -p ~/.android
-          cp signing/ci-debug.keystore ~/.android/debug.keystore
+          set -euo pipefail
+          if [ -z "${KEYSTORE_B64:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
+            echo "::error::Secrets KEYSTORE_B64 and KEY_PASSWORD are not set. Add them, then run this workflow again."
+            exit 1
+          fi
+          KS="$RUNNER_TEMP/ek-release.p12"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$KS"
+          ALIAS=$(keytool -list -keystore "$KS" -storetype PKCS12 -storepass:env KEY_PASSWORD 2>/dev/null \
+            | awk -F', ' '/PrivateKeyEntry/ {print $1; exit}' || true)
+          if [ -z "$ALIAS" ]; then
+            echo "::error::Could not open the key file. Check that KEYSTORE_B64 is the whole .p12 and KEY_PASSWORD is its password."
+            exit 1
+          fi
+          # local.properties is read by app/build.gradle.kts (RELEASE_*); the backslash is doubled for the .properties format
+          PW=$(printf '%s' "$KEY_PASSWORD" | sed 's/\\/\\\\/g')
+          {
+            echo "RELEASE_STORE_FILE=$KS"
+            echo "RELEASE_STORE_PASSWORD=$PW"
+            echo "RELEASE_KEY_ALIAS=$ALIAS"
+            echo "RELEASE_KEY_PASSWORD=$PW"
+          } >> local.properties
 
       - name: Build the release APK
         if: steps.exists.outputs.found == 'false'
         run: ./gradlew assembleRelease --stacktrace
+
+      - name: Check that the release key signed the APK
+        if: steps.exists.outputs.found == 'false'
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | grep -vi 'unsigned' | head -n 1)
+          APKSIGNER=$(ls -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -z "$APKSIGNER" ]; then echo "::warning::apksigner not found, signer check skipped"; exit 0; fi
+          GOT=$("$APKSIGNER" verify --print-certs "$APK" | grep -i 'certificate SHA-256 digest' | head -n 1 | awk '{print $NF}' | tr 'A-F' 'a-f')
+          OLD=$(keytool -list -keystore signing/ci-debug.keystore -storetype PKCS12 -storepass android 2>/dev/null \
+            | grep -i 'SHA-256' | head -n 1 | awk '{print $NF}' | tr -d ':' | tr 'A-F' 'a-f' || true)
+          echo "APK signer SHA-256: $GOT"
+          if [ -n "$OLD" ] && [ "$GOT" = "$OLD" ]; then
+            echo "::error::The APK is signed with the old shared key, not the release key. Nothing was published."
+            exit 1
+          fi
 
       - name: Create the release
         if: steps.exists.outputs.found == 'false'

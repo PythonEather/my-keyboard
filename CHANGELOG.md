@@ -2,6 +2,25 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.30
+> ## ⚠️ READ THIS FIRST: 11.2.30 uses a new signing key
+>
+> **You cannot install this version over your current app.** Android will say "App not installed" or "signed with a different key", and the in-app Update button will show the same message. Nothing is broken, this is expected and happens only once.
+>
+> **Why:** until now every release was signed with a key that sits in the public repository, so anyone could build an APK that Android treats as an update to your keyboard. From 11.2.30 the app is signed with a private key that only the developer has. Android does not allow changing the key without a reinstall.
+>
+> **What to do** (2 minutes, you keep your settings)
+>
+> 1. In your **current** app open **Settings > Backup > Full backup** and save the `.zip` to **Downloads** (or Google Drive). Do not leave it inside the app's own folder, it is deleted with the app. Tick "API keys" if you want them back.
+> 2. **Uninstall** Expressive Keyboard Pro.
+> 3. **Install** `ExpressiveKeyboard-11.2.30.apk` from this page.
+> 4. Turn the keyboard on again in Android's settings, open the app, then **Settings > Backup > Restore** and pick your `.zip`.
+>
+> After this, all later updates install normally over each other.
+
+- New release signing key (see above). The key and its password are kept in GitHub secrets, not in the code
+- The release build now stops and publishes nothing if the APK was not signed with the new key
+
 ## 11.2.29
 - Full backup (Settings > Backup > Full backup): save settings, mods and their data, themes and looks, layout profiles, pictures, fonts, sounds, icons and dictionaries into one `.zip`, and restore it later
 - You choose whether typed data is included (learned words, clipboard, typing stats; on by default) and API keys (off by default; they are stored unprotected in the file). The `.zip` has no password, so keep it private
