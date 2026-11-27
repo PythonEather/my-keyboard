@@ -2,6 +2,12 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.32
+- Settings redesign: every page except Home has a new look. Each setting is now its own soft card that squeezes a little when pressed, section titles have an accent bar, and the icons are cookie shaped like the Home cards (round when expressive shapes are off)
+- Every page starts with a card that shows the page icon and what the page is for
+- Search on Home is now a round button. Tap it and it grows into the search field and opens the keyboard. Back, or the X on an empty field, closes it
+- Home keeps its own design
+
 ## 11.2.31
 - Home screen redesign on phones: the pages are now compact two-column cards instead of long rows, so Home needs about half the scrolling. "What's new" stays as one big card at the top
 - Cards fade and slide in one after another when the app opens. It plays once per app run, so coming back to Home does not replay it. Cards squish a little and change shape when pressed

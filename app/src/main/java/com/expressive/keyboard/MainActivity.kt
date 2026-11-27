@@ -395,35 +395,41 @@ internal fun SettingsPageScaffold(
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Spacer(Modifier.height(4.dp))
-                when (page) {
-                    SettingsPage.HOME -> HomePage(settings, onNavigate, selected)
-                    SettingsPage.WHATS_NEW -> WhatsNewPage(onNavigate)
-                    SettingsPage.POWER -> PowerPage(settings)
-                    SettingsPage.THEMES -> ThemesPage(settings, onNavigate)
-                    SettingsPage.THEME_EDITOR -> ThemeEditorPage(settings, onNavigate)
-                    SettingsPage.ANIMATIONS -> AnimationsPage(settings)
-                    SettingsPage.EXTRAS -> ExtrasPage(settings)
-                    SettingsPage.AUTO_THEMES -> AutoThemesPage(settings)
-                    SettingsPage.LAYOUT_PROFILES -> LayoutProfilesPage()
-                    SettingsPage.TYPING_STATS -> TypingStatsPage(settings)
-                    SettingsPage.COLORS -> ColorsPage(settings)
-                    SettingsPage.SIZE -> KeyboardSizePage(settings)
-                    SettingsPage.KEYS -> KeysPage(settings, onNavigate)
-                    SettingsPage.LAYOUT -> LayoutEditorPage(settings)
-                    SettingsPage.LONG_PRESS -> LongPressPage(settings)
-                    SettingsPage.TOOLBAR -> {
-                        ToolbarPage(settings)
-                        IconsPage(settings)
+                val expressiveLook = settings.designStyle == DesignStyle.EXPRESSIVE.id && settings.shapeAmount == ShapeAmount.FULL
+                val subLook = remember(page, expressiveLook) { if (page == SettingsPage.HOME) null else SubpageLook(expressiveLook) }
+                // every page except Home gets the new look (see SettingsRedesign.kt)
+                CompositionLocalProvider(LocalSubpageLook provides subLook) {
+                    if (page != SettingsPage.HOME && page != SettingsPage.WHATS_NEW) PageHeader(page, expressiveLook)
+                    when (page) {
+                        SettingsPage.HOME -> HomePage(settings, onNavigate, selected)
+                        SettingsPage.WHATS_NEW -> WhatsNewPage(onNavigate)
+                        SettingsPage.POWER -> PowerPage(settings)
+                        SettingsPage.THEMES -> ThemesPage(settings, onNavigate)
+                        SettingsPage.THEME_EDITOR -> ThemeEditorPage(settings, onNavigate)
+                        SettingsPage.ANIMATIONS -> AnimationsPage(settings)
+                        SettingsPage.EXTRAS -> ExtrasPage(settings)
+                        SettingsPage.AUTO_THEMES -> AutoThemesPage(settings)
+                        SettingsPage.LAYOUT_PROFILES -> LayoutProfilesPage()
+                        SettingsPage.TYPING_STATS -> TypingStatsPage(settings)
+                        SettingsPage.COLORS -> ColorsPage(settings)
+                        SettingsPage.SIZE -> KeyboardSizePage(settings)
+                        SettingsPage.KEYS -> KeysPage(settings, onNavigate)
+                        SettingsPage.LAYOUT -> LayoutEditorPage(settings)
+                        SettingsPage.LONG_PRESS -> LongPressPage(settings)
+                        SettingsPage.TOOLBAR -> {
+                            ToolbarPage(settings)
+                            IconsPage(settings)
+                        }
+                        SettingsPage.LANGUAGES -> LanguagesPage(settings)
+                        SettingsPage.MY_WORDS -> MyWordsPage(settings)
+                        SettingsPage.TYPING -> TypingPage(settings, SettingsPage.TYPING)
+                        SettingsPage.GESTURES -> TypingPage(settings, SettingsPage.GESTURES)
+                        SettingsPage.CLIPBOARD -> TypingPage(settings, SettingsPage.CLIPBOARD)
+                        SettingsPage.FEEDBACK -> FeedbackPage(settings)
+                        SettingsPage.PLUGINS -> PluginTrustGate(settings, scrollable = false) { PluginsPage(settings) }
+                        SettingsPage.BACKUP -> BackupPage()
+                        SettingsPage.ABOUT -> AboutPage()
                     }
-                    SettingsPage.LANGUAGES -> LanguagesPage(settings)
-                    SettingsPage.MY_WORDS -> MyWordsPage(settings)
-                    SettingsPage.TYPING -> TypingPage(settings, SettingsPage.TYPING)
-                    SettingsPage.GESTURES -> TypingPage(settings, SettingsPage.GESTURES)
-                    SettingsPage.CLIPBOARD -> TypingPage(settings, SettingsPage.CLIPBOARD)
-                    SettingsPage.FEEDBACK -> FeedbackPage(settings)
-                    SettingsPage.PLUGINS -> PluginTrustGate(settings, scrollable = false) { PluginsPage(settings) }
-                    SettingsPage.BACKUP -> BackupPage()
-                    SettingsPage.ABOUT -> AboutPage()
                 }
                 Spacer(Modifier.height(24.dp))
             }
@@ -486,7 +492,7 @@ internal fun HomePage(settings: KeyboardSettings, onNavigate: (SettingsPage) -> 
     }
     var query by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     var editingPins by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    PillField(query, { query = it }, "Найти настройку: вибрация, шрифт, свайп…", Icons.Rounded.Search, tonal = true)
+    ExpandingSearch(query, { query = it }, "Найти настройку: вибрация, шрифт, свайп…")
     val searching = query.isNotBlank()
     if (searching) {
         val found = remember(query) { SettingsSearch.find(query) }

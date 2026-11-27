@@ -295,19 +295,22 @@ internal fun PillField(
 /** Группа в стиле Android 16: общие крупные скругления снаружи, мелкие между пунктами. */
 @Composable
 internal fun SettingsSection(title: String?, content: @Composable ColumnScope.() -> Unit) {
+    val sub = LocalSubpageLook.current != null
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (title != null) {
-            Text(
-                tr(title),
-                modifier = Modifier.padding(start = 16.dp),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Row(Modifier.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (sub) Box(Modifier.size(width = 5.dp, height = 16.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+                Text(
+                    tr(title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            Modifier.fillMaxWidth().then(if (sub) Modifier else Modifier.clip(RoundedCornerShape(28.dp))),
+            verticalArrangement = Arrangement.spacedBy(if (sub) 6.dp else 2.dp),
             content = content
         )
     }
@@ -324,11 +327,24 @@ internal fun Modifier.roundedLayer(radius: () -> androidx.compose.ui.unit.Dp): M
 internal fun GroupItem(onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    // внутренние углы 4 dp — спецификация списков M3; при нажатии углы «набухают»
-    val corner = animateDpAsState(if (pressed) 22.dp else 4.dp, spring(dampingRatio = 0.6f, stiffness = 700f), label = "itemCorner")
-    // угол читается только в слое: пока он «набухает», пункт не перекомпоновывается заново на каждом кадре
+    // sub pages: every item is its own soft card (22 dp corners, squeezes a little when pressed);
+    // Home keeps the joined group: 4 dp corners inside, that swell when pressed
+    val sub = LocalSubpageLook.current != null
+    val corner = animateDpAsState(
+        if (pressed) (if (sub) 12.dp else 22.dp) else (if (sub) 22.dp else 4.dp),
+        spring(dampingRatio = 0.6f, stiffness = 700f), label = "itemCorner"
+    )
+    val scale = animateFloatAsState(if (sub && pressed) 0.985f else 1f, spring(dampingRatio = 0.6f, stiffness = 500f), label = "itemScale")
+    // corner and scale are read only inside the layer: while an item moves it is not recomposed on every frame
     Box(
-        Modifier.fillMaxWidth().roundedLayer { corner.value }.background(glassSurface(MaterialTheme.colorScheme.surfaceBright))
+        Modifier.fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                shape = RoundedCornerShape(corner.value)
+                clip = true
+            }
+            .background(glassSurface(MaterialTheme.colorScheme.surfaceBright))
             .then(
                 if (onClick != null) Modifier.clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
                 else Modifier
@@ -338,7 +354,14 @@ internal fun GroupItem(onClick: (() -> Unit)? = null, content: @Composable () ->
 
 @Composable
 internal fun IconBadge(icon: ImageVector, container: Color = MaterialTheme.colorScheme.secondaryContainer, tint: Color = MaterialTheme.colorScheme.onSecondaryContainer) {
-    Box(Modifier.size(40.dp).clip(CircleShape).background(container), contentAlignment = Alignment.Center) {
+    val look = LocalSubpageLook.current
+    if (look != null) {
+        // sub pages: a soft cookie shape (a circle when expressive shapes are off), the same family as the Home cards
+        val spec = remember(look.wavy) { if (look.wavy) WavySpec.of(ExpressiveShapePreset.COOKIE_12) else WavySpec.Circle }
+        Box(Modifier.size(40.dp).wavyBackground(spec, container), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+        }
+    } else Box(Modifier.size(40.dp).clip(CircleShape).background(container), contentAlignment = Alignment.Center) {
         Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
     }
 }
