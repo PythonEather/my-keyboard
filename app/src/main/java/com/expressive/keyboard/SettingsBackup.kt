@@ -163,6 +163,7 @@ internal fun BackupPage() {
                 .onFailure { Toast.makeText(context, tr("Ошибка: {0}", it.message), Toast.LENGTH_LONG).show() }
         }
     }
+    FullBackupSection()
     T9BackupSection()
     SettingsSection("Настройки") {
         ActionItem(Icons.Rounded.Upload, "Экспорт настроек", "Сохранить все параметры в .json", onClick = {

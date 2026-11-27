@@ -2,6 +2,11 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.29
+- Full backup (Settings > Backup > Full backup): save settings, mods and their data, themes and looks, layout profiles, pictures, fonts, sounds, icons and dictionaries into one `.zip`, and restore it later
+- You choose whether typed data is included (learned words, clipboard, typing stats; on by default) and API keys (off by default; they are stored unprotected in the file). The `.zip` has no password, so keep it private
+- Restore checks the whole file before changing anything, replaces current data and closes the app. Only restore your own backup. Android's own permissions and enabling the keyboard are not part of the backup
+
 ## 11.2.28
 - Extra effects page (Settings > Extra effects). Every effect has its own switch and sliders and is off by default, and nothing runs while its switch is off
 - Press shockwave (`shockwave`): a soft ring spreads from the pressed key and nudges the keys it passes, like the neighbour push but with a visible ripple. Sliders for wave speed (`shockwave_speed`), strength (`shockwave_strength`), how far it goes (`shockwave_reach`) and key ripple (`shockwave_ripple`, 0 = ring only), and a switch for the ring itself (`shockwave_ring`). Visual only, touch areas do not move
