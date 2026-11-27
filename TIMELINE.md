@@ -7,6 +7,7 @@ so run `bash tools/timeline.sh` after raising `versionName` in `app/build.gradle
 <!-- timeline:start -->
 | Version | Date | Commit | Commit message |
 |---|---|---|---|
+| 11.2.29 | 2026-11-27 | `879968b` | 11.2.29: full backup |
 | 11.2.28 | 2026-11-27 | `be53209` | 11.2.28: shockwave, tilt parallax, typing glow, edge swipe, themes by app and time, layout profiles, sound packs, cursor ticks, typing stats |
 | 11.2.27 | 2026-11-27 | `d57e742` | 11.2.27: wash, emoji button, plugin changelog, clipboard categories, About redesign |
 | 11.2.26 | 2026-11-26 | `9c7b4bf` | 11.2.26: jelly push, DPI, live wallpaper, grouped size, paste row, fullscreen fix |
