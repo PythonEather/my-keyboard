@@ -1,4 +1,5 @@
 # Expressive Keyboard Pro
+![Expressive Keyboard Pro demo](docs/demo.gif)
 
 > **This is an independent fork, not the original project.** It is based on
 > [kotlalipopus/Expressive-Keyboard](https://github.com/kotlalipopus/Expressive-Keyboard) (MIT) and is maintained
