@@ -7,6 +7,11 @@ so run `bash tools/timeline.sh` after raising `versionName` in `app/build.gradle
 <!-- timeline:start -->
 | Version | Date | Commit | Commit message |
 |---|---|---|---|
+| 11.2.28 | 2026-11-27 | `be53209` | 11.2.28: shockwave, tilt parallax, typing glow, edge swipe, themes by app and time, layout profiles, sound packs, cursor ticks, typing stats |
+| 11.2.27 | 2026-11-27 | `d57e742` | 11.2.27: wash, emoji button, plugin changelog, clipboard categories, About redesign |
+| 11.2.26 | 2026-11-26 | `9c7b4bf` | 11.2.26: jelly push, DPI, live wallpaper, grouped size, paste row, fullscreen fix |
+| 11.2.25 | 2026-11-26 | `f0fd7aa` | 11.2.25: cursor sliders, header fix, updater fixes |
+| 11.2.24 | 2026-11-26 | `d7d1a59` | 11.2.24: space bar cursor speed, header fade fix |
 | 11.2.23 | 2026-11-26 | `e220938` | 11.2.23 |
 | 11.2.22 | 2026-11-26 | `5993ca7` | 11.2.22: space swipe up/down, fast typing fix, sand effect settings |
 | 11.2.21 | 2026-11-25 | `10b7c43` | Release 11.2.21: glide fix, incognito flag, animation packs, panel and open transitions |
