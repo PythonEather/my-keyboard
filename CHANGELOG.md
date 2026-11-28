@@ -2,6 +2,11 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.38
+- Faster settings: opening a page no longer waits for the whole page to be built. The title bar and the slide start at once, and the page content appears a moment later with a soft fade
+- Faster ?123, symbols page, emoji and language keys: they no longer start the press shockwave ring and the key ripple, which ran over the keyboard rebuilding underneath and made quick repeated taps lag. They still get the colour sweep. All other keys keep the shockwave as before
+- Typing glow (Settings, Extra effects) only lights up while you type letters, space, backspace and enter. Tapping ?123, emoji, language, shift or a panel button no longer starts it, and it is not drawn over the clipboard, emoji, GIF, voice and plugin panels. This was the light strip at the bottom of the keyboard
+
 ## 11.2.37
 - Fixed: in the button shape and letter popup shape pickers, "Your shape now" was squeezed into a thin column and showed one letter per line. The Surprise me button now has its own full-width row, so the shape name has room again
 - Long copied text no longer freezes or crashes the keyboard. A copy longer than 50,000 characters is saved as a .txt file in Downloads/Expressive Keyboard, and the clipboard shows a small card with its size and first words instead of the text. The limit can be changed or turned off in Settings, Clipboard, Long copied text

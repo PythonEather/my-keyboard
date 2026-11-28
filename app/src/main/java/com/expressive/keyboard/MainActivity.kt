@@ -364,6 +364,19 @@ internal fun SettingsPageScaffold(
     val tabInfo = remember(tabDefs, tabIndex) { tabDefs?.let { PageTabsInfo(it, tabIndex.coerceIn(0, it.lastIndex), PageTabs.pinned(page)) } }
     val pageScroll = rememberScrollState()
     LaunchedEffect(tabIndex) { pageScroll.animateScrollTo(0) }
+    // The page body (often hundreds of items in one column) used to be built in the very first frame of the slide, so
+    // opening a page waited for all of it. Now the bar and the slide start at once and the body is built two frames later
+    // and fades in. The first screen after launch, and a page restored with its scroll position, are built at once.
+    var bodyReady by remember(page) { mutableStateOf(!SettingsNav.warm || pageScroll.value > 0) }
+    LaunchedEffect(page) {
+        if (!bodyReady) {
+            withFrameNanos { }
+            withFrameNanos { }
+            bodyReady = true
+        }
+        SettingsNav.warm = true
+    }
+    val bodyAlpha by animateFloatAsState(if (bodyReady) 1f else 0f, tween(160), label = "bodyReveal")
     val showTest = page in setOf(SettingsPage.SIZE, SettingsPage.KEYS, SettingsPage.LAYOUT, SettingsPage.LANGUAGES,
         SettingsPage.GESTURES, SettingsPage.TYPING, SettingsPage.FEEDBACK)
     Scaffold(
@@ -398,10 +411,12 @@ internal fun SettingsPageScaffold(
             }
             if (tabInfo != null) PageTabBar(tabInfo.tabs, tabInfo.selected, { tabIndex = it }, Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
             Column(
-                modifier = Modifier.fillMaxSize().verticalScroll(pageScroll).padding(horizontal = 16.dp).navigationBarsPadding(),
+                modifier = Modifier.fillMaxSize().verticalScroll(pageScroll).padding(horizontal = 16.dp).navigationBarsPadding()
+                    .graphicsLayer { alpha = bodyAlpha },
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Spacer(Modifier.height(4.dp))
+                if (bodyReady) {
                 val expressiveLook = settings.designStyle == DesignStyle.EXPRESSIVE.id && settings.shapeAmount == ShapeAmount.FULL
                 val subLook = remember(page, expressiveLook) { if (page == SettingsPage.HOME) null else SubpageLook(expressiveLook) }
                 // every page except Home gets the new look (see SettingsRedesign.kt)
@@ -438,10 +453,16 @@ internal fun SettingsPageScaffold(
                         SettingsPage.ABOUT -> AboutPage()
                     }
                 }
+                }
                 Spacer(Modifier.height(24.dp))
             }
         }
     }
+}
+
+/** Set once the first settings screen has been shown; later page changes build their body after the slide starts. */
+internal object SettingsNav {
+    @Volatile var warm = false
 }
 
 @Composable

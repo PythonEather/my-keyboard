@@ -410,7 +410,11 @@ internal fun KeyView(
                     act.keyDown(k)
                     pressed = true
                     KeyPush.press(cell.coords, scope)
-                    Shockwave.press(cell.coords, scope)
+                    // ?123, the symbols page, emoji and language swap the keys under the ring: the ring and the key ripple
+                    // would run over that rebuild and drop frames when these are tapped quickly, so they only get the wash
+                    if (k.type != KeyType.MODE_SYMBOLS && k.type != KeyType.SYMBOLS_PAGE && k.type != KeyType.STICKERS && k.type != KeyType.GLOBE) {
+                        Shockwave.press(cell.coords, scope)
+                    }
                     if (k.type in ButtonWash.keyTypes) ButtonWash.play(wash, scope)
                     // размер самой клавиши — без половин промежутков вокруг
                     val inset = Offset(cGx / 2f, cGy / 2f)

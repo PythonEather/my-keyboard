@@ -753,7 +753,10 @@ internal fun KeyboardScreen(
         ShockwaveEffect(settings)
         TiltParallaxEffect(settings)
         ShockwaveLayer(settings.shockwave && settings.shockwaveRing, palette.accent)
-        TypingGlowLayer(settings, palette.accent)
+        // the typing glow belongs to the typing keys: it is not drawn over the clipboard, emoji, GIF, voice and plugin panels
+        val glowPanel = panel != ActivePanel.CLIPBOARD && panel != ActivePanel.EMOJI && panel != ActivePanel.GIF &&
+            panel != ActivePanel.VOICE && panel != ActivePanel.PLUGINS
+        if (glowPanel) TypingGlowLayer(settings, palette.accent)
         ScriptOverlayLayer()
         if (fullscreen) {
             ScreenPanelLayer(if (showKeys) keysPx else 0, palette, font)

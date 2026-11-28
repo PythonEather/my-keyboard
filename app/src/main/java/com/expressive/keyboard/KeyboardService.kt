@@ -2148,7 +2148,9 @@ class ComposeKeyboardService : InputMethodService(),
         val special = key.type == KeyType.SPACE || key.type == KeyType.ENTER ||
             key.type == KeyType.BACKSPACE || key.type == KeyType.SHIFT
         HapticsEngine.keyPress(this, inputView, settings, special, key.label.lowercase())
-        if (settings.typingGlow) TypingGlow.press()
+        // only real typing lights the glow: ?123, emoji, language, shift and the panel buttons do not
+        if (settings.typingGlow && (key.type == KeyType.CHARACTER || key.type == KeyType.SPACE ||
+                key.type == KeyType.BACKSPACE || key.type == KeyType.ENTER)) TypingGlow.press()
         if (settings.typingStats && !flags.isPassword && !privateNow &&
             (key.type == KeyType.CHARACTER || key.type == KeyType.SPACE || key.type == KeyType.ENTER)
         ) TypingHistory.press(this)
