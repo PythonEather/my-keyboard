@@ -147,6 +147,7 @@ internal fun PluginsPage(settings: KeyboardSettings) {
     val errors = PluginRepository.errors
     var expanded by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf<KeyboardPlugin?>(null) }
+    var studioId by remember { mutableStateOf<String?>(null) }
     var pendingNetwork by remember { mutableStateOf<KeyboardPlugin?>(null) }
 
     var linkDialog by remember { mutableStateOf(false) }
@@ -278,14 +279,18 @@ internal fun PluginsPage(settings: KeyboardSettings) {
     if (user.isNotEmpty()) {
         SettingsSection("Мои плагины") {
             user.forEach { p ->
-                PluginCard(p, expanded == p.id, onExpand = { expanded = if (expanded == p.id) null else p.id }, onDelete = { confirmDelete = p }, onExport = startExport)
+                PluginCard(p, expanded == p.id, onExpand = { expanded = if (expanded == p.id) null else p.id }, onDelete = { confirmDelete = p }, onExport = startExport, onEdit = { studioId = it.id })
             }
         }
     }
     SettingsSection("Встроенные") {
         builtIn.forEach { p ->
-            PluginCard(p, expanded == p.id, onExpand = { expanded = if (expanded == p.id) null else p.id }, onDelete = null, onExport = startExport)
+            PluginCard(p, expanded == p.id, onExpand = { expanded = if (expanded == p.id) null else p.id }, onDelete = null, onExport = startExport, onEdit = { studioId = it.id })
         }
+    }
+
+    studioId?.let { sid ->
+        plugins.firstOrNull { it.id == sid }?.let { sp -> PluginStudioDialog(sp, onClose = { studioId = null }) }
     }
 
     if (linkDialog) {
@@ -388,7 +393,7 @@ internal fun PluginsPage(settings: KeyboardSettings) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun PluginCard(p: KeyboardPlugin, expanded: Boolean, onExpand: () -> Unit, onDelete: (() -> Unit)?, onExport: ((KeyboardPlugin, Boolean) -> Unit)? = null) {
+internal fun PluginCard(p: KeyboardPlugin, expanded: Boolean, onExpand: () -> Unit, onDelete: (() -> Unit)?, onExport: ((KeyboardPlugin, Boolean) -> Unit)? = null, onEdit: ((KeyboardPlugin) -> Unit)? = null) {
     val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
     val settings by KeyboardPrefs.observe()
@@ -533,6 +538,13 @@ internal fun PluginCard(p: KeyboardPlugin, expanded: Boolean, onExpand: () -> Un
                     }
                     val skinOn = p.skin != null && settings.skinPlugin == p.id
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (onEdit != null && (p.script != null || !p.builtIn)) {
+                            FilledTonalButton(onClick = { onEdit(p) }) {
+                                Icon(Icons.Rounded.Code, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(tr(if (p.builtIn || p.files.isNotEmpty()) "View code" else "Edit code"))
+                            }
+                        }
                         if (p.hasLook && !skinOn) {
                             FilledTonalButton(onClick = {
                                 if (!enabled) PluginRepository.setEnabled(context, p.id, true)

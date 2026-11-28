@@ -28,6 +28,7 @@
 - Plugin permission `media`: now playing, cover and player controls (needs Notification access for the details)
 - Plugin permission `settings_layout`: a plugin can pin, reorder and hide pages on the Settings home screen
 - Plugin permission `toolbar_layout`: a plugin can reorder and hide the buttons of the keyboard toolbar
+- Plugin Studio: edit a plugin inside the app (Settings → Plugins and mods → Edit code), Save & Run without re-importing, error lines you can tap, one-tap bug report, find/replace patches, saved versions with undo, and a basic shell tab
 - Security: red dot while a plugin uses a sensitive permission, and a reminder banner every few minutes (can be switched off)
 - Import and export of custom animations; export of plugins (JSON and script)
 - Press highlight slider (turn the color change of a pressed key down or off) and a soft fade between letters, numbers and symbols

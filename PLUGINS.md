@@ -1303,3 +1303,39 @@ every few minutes (default 4) while such a plugin is enabled; the user can chang
 Settings → Plugins → Plugin security. With the reminder off the dot still shows for the microphone and for `network` combined with
 `read_text`, `clipboard` or `media`. Plugins cannot change these settings.
 
+## Plugin Studio: edit a plugin inside the app
+
+Open **Settings → Plugins and mods**, expand one of your plugins and tap **Edit code**. Built-in plugins and plugins
+installed from a `.zip` open read-only.
+
+| Tab | What it does |
+|---|---|
+| **Code** | An editor with line numbers, colours for JavaScript and Lua, and a row of keys a phone keyboard hides (`{ } ( ) ; = " '`). **Save & Run** installs the text as the plugin and reloads it at once, with no file to import. A failed run shows its error above the tabs; if the message names a line, tap it to jump there. |
+| **Log** | The mod's log and its call statistics (calls, average and slowest call, slow calls, errors). **Copy report** puts one text on the clipboard: plugin and app versions, Android and device, permissions, statistics, the last 20 log lines, and the code around the last error. Paste it when you ask for help. |
+| **Patch** | Apply a few changes without re-importing the whole file (format below). **Apply** puts the result in the editor, **Apply & Run** also saves and reloads it. |
+| **Shell** | A basic shell (`/system/bin/sh`, 10 second limit) for the keyboard's private files (`~` is the app's files folder, plugins are in `~/plugins`). It is started only by what you type here: plugins cannot use it. Built-in commands: `help`, `reload`, `log [n]`, `errors`, `report`, `undo`, `versions`, `plugins`, `version`, `clear`, `cd`. |
+
+Every Save & Run keeps the version it replaces (the newest 20). **Versions** in the top bar restores one, and `undo` in
+the shell restores the newest. Sources longer than 250,000 characters are not shown in the editor (it would be slow); use
+the Patch tab for those.
+
+### Patch format
+
+```
+@@ find
+var speed = 4;
+@@ replace
+var speed = 6;
+@@ end
+
+@@ append
+kb.log("started");
+@@ end
+```
+
+- `find` is the text to change, one line or several. It must match **exactly once**; add neighbouring lines if it appears
+  more than once. Spaces at the end of a line are ignored when whole lines are matched.
+- Leave `replace` empty to delete the lines.
+- `append` adds text at the end of the file.
+- Several blocks can follow each other. They are applied together: if one does not match, nothing is changed.
+
