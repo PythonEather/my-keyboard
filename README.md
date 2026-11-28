@@ -68,7 +68,11 @@ successful **Build APK** run in the [Actions](https://github.com/PythonEather/my
 
 Requires Android 8.0 or newer.
 
-Also available on [Appteka](https://appteka.store/app/146r343798). A newer build installs over an older one only if both were signed with the same key;
+Also available on [Appteka](https://appteka.store/app/146r343798).
+
+Website: https://pythoneather.github.io/my-keyboard/
+
+A newer build installs over an older one only if both were signed with the same key;
 an app signed with a different key has to be uninstalled first.
 
 ### Updates inside the app (OTA)
