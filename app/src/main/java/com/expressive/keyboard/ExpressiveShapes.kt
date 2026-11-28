@@ -189,7 +189,78 @@ enum class ExpressiveShapePreset(
     PIXEL_CIRCLE("PIXEL_CIRCLE", "Пиксельный круг", ShapeProfile.FIXED, 12, 6f),
     PIXEL_TRIANGLE("PIXEL_TRIANGLE", "Пиксельный треугольник", ShapeProfile.FIXED, 12, 6f),
     BUN("BUN", "Булочка", ShapeProfile.FIXED, 12, 6f),
-    HEART("HEART", "Сердце", ShapeProfile.FIXED, 12, 6f);
+    HEART("HEART", "Сердце", ShapeProfile.FIXED, 12, 6f),
+    // 11.2.36: more ready shapes, built in ShapeBank
+    SQUIRCLE("SQUIRCLE", "Squircle", ShapeProfile.FIXED, 12, 6f),
+    SQUARE_SOFT("SQUARE_SOFT", "Soft square", ShapeProfile.FIXED, 12, 6f),
+    COOKIE_5("COOKIE_5", "Cookie 5", ShapeProfile.FIXED, 12, 6f),
+    COOKIE_8("COOKIE_8", "Cookie 8", ShapeProfile.FIXED, 12, 6f),
+    COOKIE_10("COOKIE_10", "Cookie 10", ShapeProfile.FIXED, 12, 6f),
+    COOKIE_14("COOKIE_14", "Cookie 14", ShapeProfile.FIXED, 12, 6f),
+    COOKIE_16("COOKIE_16", "Cookie 16", ShapeProfile.FIXED, 12, 6f),
+    COOKIE_20("COOKIE_20", "Cookie 20", ShapeProfile.FIXED, 12, 6f),
+    FLOWER_5("FLOWER_5", "Flower 5", ShapeProfile.FIXED, 12, 6f),
+    FLOWER_7("FLOWER_7", "Flower 7", ShapeProfile.FIXED, 12, 6f),
+    FLOWER_8("FLOWER_8", "Flower 8", ShapeProfile.FIXED, 12, 6f),
+    FLOWER_10("FLOWER_10", "Flower 10", ShapeProfile.FIXED, 12, 6f),
+    DAISY_12("DAISY_12", "Daisy", ShapeProfile.FIXED, 12, 6f),
+    CLOVER_3("CLOVER_3", "Clover 3", ShapeProfile.FIXED, 12, 6f),
+    CLOVER_5("CLOVER_5", "Clover 5", ShapeProfile.FIXED, 12, 6f),
+    CLOVER_6("CLOVER_6", "Clover 6", ShapeProfile.FIXED, 12, 6f),
+    STAR_5("STAR_5", "Star 5", ShapeProfile.FIXED, 12, 6f),
+    STAR_5_SOFT("STAR_5_SOFT", "Soft star", ShapeProfile.FIXED, 12, 6f),
+    STAR_6("STAR_6", "Star 6", ShapeProfile.FIXED, 12, 6f),
+    STAR_7("STAR_7", "Star 7", ShapeProfile.FIXED, 12, 6f),
+    STAR_8("STAR_8", "Star 8", ShapeProfile.FIXED, 12, 6f),
+    STAR_10("STAR_10", "Star 10", ShapeProfile.FIXED, 12, 6f),
+    STAR_12("STAR_12", "Star 12", ShapeProfile.FIXED, 12, 6f),
+    STAR_16("STAR_16", "Star 16", ShapeProfile.FIXED, 12, 6f),
+    SPARKLE_4("SPARKLE_4", "Sparkle 4", ShapeProfile.FIXED, 12, 6f),
+    SPARKLE_6("SPARKLE_6", "Sparkle 6", ShapeProfile.FIXED, 12, 6f),
+    SPARKLE_8("SPARKLE_8", "Sparkle 8", ShapeProfile.FIXED, 12, 6f),
+    SHURIKEN("SHURIKEN", "Shuriken", ShapeProfile.FIXED, 12, 6f),
+    BADGE_8("BADGE_8", "Badge 8", ShapeProfile.FIXED, 12, 6f),
+    BADGE_10("BADGE_10", "Badge 10", ShapeProfile.FIXED, 12, 6f),
+    BADGE_12("BADGE_12", "Badge 12", ShapeProfile.FIXED, 12, 6f),
+    BADGE_16("BADGE_16", "Badge 16", ShapeProfile.FIXED, 12, 6f),
+    BADGE_20("BADGE_20", "Badge 20", ShapeProfile.FIXED, 12, 6f),
+    GEAR_6("GEAR_6", "Gear 6", ShapeProfile.FIXED, 12, 6f),
+    GEAR_8("GEAR_8", "Gear 8", ShapeProfile.FIXED, 12, 6f),
+    GEAR_10("GEAR_10", "Gear 10", ShapeProfile.FIXED, 12, 6f),
+    GEAR_12("GEAR_12", "Gear 12", ShapeProfile.FIXED, 12, 6f),
+    SAW_12("SAW_12", "Saw", ShapeProfile.FIXED, 12, 6f),
+    COG_SOFT_8("COG_SOFT_8", "Soft cog", ShapeProfile.FIXED, 12, 6f),
+    TRIANGLE_SOFT("TRIANGLE_SOFT", "Soft triangle", ShapeProfile.FIXED, 12, 6f),
+    TRIANGLE_ROUND("TRIANGLE_ROUND", "Round triangle", ShapeProfile.FIXED, 12, 6f),
+    TRIANGLE_DOWN("TRIANGLE_DOWN", "Triangle down", ShapeProfile.FIXED, 12, 6f),
+    TILT_SQUARE("TILT_SQUARE", "Tilted square", ShapeProfile.FIXED, 12, 6f),
+    PENTAGON_SOFT("PENTAGON_SOFT", "Soft pentagon", ShapeProfile.FIXED, 12, 6f),
+    HEXAGON("HEXAGON", "Hexagon", ShapeProfile.FIXED, 12, 6f),
+    HEXAGON_FLAT("HEXAGON_FLAT", "Flat hexagon", ShapeProfile.FIXED, 12, 6f),
+    HEXAGON_SOFT("HEXAGON_SOFT", "Soft hexagon", ShapeProfile.FIXED, 12, 6f),
+    HEPTAGON("HEPTAGON", "Heptagon", ShapeProfile.FIXED, 12, 6f),
+    OCTAGON("OCTAGON", "Octagon", ShapeProfile.FIXED, 12, 6f),
+    OCTAGON_SOFT("OCTAGON_SOFT", "Soft octagon", ShapeProfile.FIXED, 12, 6f),
+    NONAGON("NONAGON", "Nonagon", ShapeProfile.FIXED, 12, 6f),
+    DECAGON("DECAGON", "Decagon", ShapeProfile.FIXED, 12, 6f),
+    DODECAGON("DODECAGON", "Dodecagon", ShapeProfile.FIXED, 12, 6f),
+    PLUS("PLUS", "Plus", ShapeProfile.FIXED, 12, 6f),
+    CROSS("CROSS", "Cross", ShapeProfile.FIXED, 12, 6f),
+    DROP("DROP", "Drop", ShapeProfile.FIXED, 12, 6f),
+    LEAF("LEAF", "Leaf", ShapeProfile.FIXED, 12, 6f),
+    SHIELD("SHIELD", "Shield", ShapeProfile.FIXED, 12, 6f),
+    HOUSE("HOUSE", "House", ShapeProfile.FIXED, 12, 6f),
+    ARROWHEAD("ARROWHEAD", "Arrowhead", ShapeProfile.FIXED, 12, 6f),
+    KITE("KITE", "Kite", ShapeProfile.FIXED, 12, 6f),
+    TRAPEZOID("TRAPEZOID", "Trapezoid", ShapeProfile.FIXED, 12, 6f),
+    BLOB_1("BLOB_1", "Blob 1", ShapeProfile.FIXED, 12, 6f),
+    BLOB_2("BLOB_2", "Blob 2", ShapeProfile.FIXED, 12, 6f),
+    BLOB_3("BLOB_3", "Blob 3", ShapeProfile.FIXED, 12, 6f),
+    BLOB_4("BLOB_4", "Blob 4", ShapeProfile.FIXED, 12, 6f),
+    BLOB_5("BLOB_5", "Blob 5", ShapeProfile.FIXED, 12, 6f),
+    BLOB_6("BLOB_6", "Blob 6", ShapeProfile.FIXED, 12, 6f),
+    BLOB_7("BLOB_7", "Blob 7", ShapeProfile.FIXED, 12, 6f),
+    BLOB_8("BLOB_8", "Blob 8", ShapeProfile.FIXED, 12, 6f);
 
     /** Та же фигура из набора MaterialShapes. */
     @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -230,6 +301,7 @@ enum class ExpressiveShapePreset(
             PIXEL_TRIANGLE -> MaterialShapes.PixelTriangle
             BUN -> MaterialShapes.Bun
             HEART -> MaterialShapes.Heart
+            else -> ShapeBank.build(this)
         }
 
     /** Можно ли менять число и глубину волн (у готовых форм и круга ползунки не нужны). */
@@ -239,6 +311,9 @@ enum class ExpressiveShapePreset(
         fun fromId(id: String): ExpressiveShapePreset = entries.firstOrNull { it.id == id } ?: COOKIE_12
 
         /** Компактные «круглые» формы для украшений: значки плагинов и плиток (полукруг, стрелка и т.п. там смотрятся плохо). */
+        /** Shapes a letter bubble can take: the decorative ones and the roundish new ones. The rest become a rounded box. */
+        val popupFriendly: Set<ExpressiveShapePreset> by lazy { decorative.toSet() + ShapeBank.letterFriendly }
+
         val decorative: List<ExpressiveShapePreset> = listOf(
             COOKIE_12, SUNNY_8, FLOWER_6, CLOVER_4, COOKIE_6, COOKIE_7, COOKIE_9, CLOVER_8,
             SOFT_BURST, VERY_SUNNY, PUFFY, GEM, PENTAGON, SQUARE

@@ -123,7 +123,7 @@ internal object PageTabs {
             PageTab("Light", Icons.Rounded.LightMode, listOf("Tilt parallax", "Typing glow"))
         )
         SettingsPage.AUTO_THEMES -> listOf(
-            PageTab("Looks", Icons.Rounded.Save, listOf("Saved looks"), others = true),
+            PageTab("My themes", Icons.Rounded.Save, listOf("Saved looks"), others = true),
             PageTab("Apps", Icons.Rounded.Apps, listOf("Theme for each app")),
             PageTab("Day and night", Icons.Rounded.DarkMode, listOf("Day and night"))
         )

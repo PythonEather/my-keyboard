@@ -190,7 +190,7 @@ private fun LookPickerDialog(
         title = { Text(tr(title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                if (looks.isEmpty() && !allowBase) Text(tr("Save a look first (Saved looks, above)"))
+                if (looks.isEmpty()) Text(tr("No saved themes yet. Save one first: Themes or Colors page, button Save this theme"))
                 if (allowNone) PickRow(tr(noneLabel)) { onPick(null) }
                 if (allowBase) PickRow(tr("My normal theme")) { onPick(AutoLookRules.BASE) }
                 for (n in looks) PickRow(n) { onPick(n) }
@@ -255,6 +255,31 @@ private fun lookName(name: String?): String = when {
     else -> name
 }
 
+/**
+ * One button that saves the theme you wear now under a name. It sits under the preview on the Themes and Colors pages,
+ * so a beginner finds it where the theme is made. A saved theme can then be picked for an app or for day and night.
+ */
+@Composable
+internal fun SaveThemeAction() {
+    val context = LocalContext.current
+    var naming by remember { mutableStateOf(false) }
+    val count = LookStore.names(context).size
+    ActionItem(
+        Icons.Rounded.Save, "Save this theme",
+        if (count == 0) "Give it a name. Then you can use it for an app, or for day or night (Themes by app and time)"
+        else tr("{0} saved. Save this one too, then pick it for an app or for day or night", count),
+        onClick = { naming = true }
+    )
+    if (naming) NameDialog("Name this theme", { naming = false }) { name ->
+        naming = false
+        if (LookStore.save(context, name)) {
+            Toast.makeText(context, tr("Saved: {0}. Use it in Themes by app and time", LookStore.clean(name)), Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(context, tr("Could not save: empty name or too many looks"), Toast.LENGTH_LONG).show()
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------------------------- themes by app and time
 
 @Composable
@@ -273,17 +298,18 @@ internal fun AutoThemesPage(settings: KeyboardSettings) {
 
     InfoCard(
         Icons.Rounded.Style,
-        "A look is a saved copy of your theme: colours, shapes, font, glass and skin. The keyboard wears it for an app or for the time of day. Your own theme is never changed."
+        "How it works. 1) Make a theme in Themes and Colors, then save it with a name. 2) Pick a saved theme for an app, or for day and night. 3) The keyboard wears it by itself. Your own theme is never changed."
     )
+    if (looks.isEmpty()) InfoCard(Icons.Rounded.Info, "You have no saved themes yet. Start with the first button below.")
 
     SettingsSection("Saved looks") {
         ActionItem(
-            Icons.Rounded.Save, "Save the current theme as a look", "Set your theme in Themes and Colors first, then save it here",
+            Icons.Rounded.Save, "Save the theme you wear now", "Tip: set it up in Themes and Colors first. You can also save from those pages",
             onClick = { naming = true }
         )
         for (n in looks) {
             ActionItem(
-                Icons.Rounded.Palette, n, "Tap to make it your normal theme",
+                Icons.Rounded.Palette, n, "Tap to wear it now as your normal theme",
                 onClick = {
                     LookStore.applyNow(context, n)
                     Toast.makeText(context, tr("Applied: {0}", n), Toast.LENGTH_SHORT).show()
@@ -322,7 +348,7 @@ internal fun AutoThemesPage(settings: KeyboardSettings) {
     SettingsSection("Day and night") {
         ToggleItem(
             Icons.Rounded.DarkMode, "Day and night themes",
-            "The keyboard wears one look by day and another at night. An app rule above wins over this",
+            "One theme by day and another at night. Pick both below. A theme you set for an app wins over this",
             settings.dayNight
         ) { putB("day_night", it) }
         if (settings.dayNight) {
@@ -330,8 +356,8 @@ internal fun AutoThemesPage(settings: KeyboardSettings) {
                 Icons.Rounded.Schedule, "When night starts", null,
                 listOf("TIMES" to "At times I choose", "SUNSET" to "At sunset", "SYSTEM" to "With system dark mode"), settings.dayNightMode
             ) { KeyboardPrefs.edit(context) { putString("day_night_mode", it) } }
-            ActionItem(Icons.Rounded.LightMode, "Day look", lookName(settings.dayLook), onClick = { pickDay = true })
-            ActionItem(Icons.Rounded.DarkMode, "Night look", lookName(settings.nightLook), onClick = { pickNight = true })
+            ActionItem(Icons.Rounded.LightMode, "Day theme", lookName(settings.dayLook), onClick = { pickDay = true })
+            ActionItem(Icons.Rounded.DarkMode, "Night theme", lookName(settings.nightLook), onClick = { pickNight = true })
             if (settings.dayNightMode != "SYSTEM") {
                 SliderItem(
                     Icons.Rounded.LightMode, if (settings.dayNightMode == "SUNSET") "Day starts (if sunset is unknown)" else "Day starts",
@@ -371,7 +397,7 @@ internal fun AutoThemesPage(settings: KeyboardSettings) {
         }
     }
 
-    if (naming) NameDialog("Name this look", { naming = false }) { name ->
+    if (naming) NameDialog("Name this theme", { naming = false }) { name ->
         naming = false
         if (LookStore.save(context, name)) tick++ else Toast.makeText(context, tr("Could not save: empty name or too many looks"), Toast.LENGTH_LONG).show()
     }
@@ -389,11 +415,11 @@ internal fun AutoThemesPage(settings: KeyboardSettings) {
             tick++
         }
     }
-    if (pickDay) LookPickerDialog("Day look", looks, allowBase = true, allowNone = false, noneLabel = "", onDismiss = { pickDay = false }) {
+    if (pickDay) LookPickerDialog("Day theme", looks, allowBase = true, allowNone = false, noneLabel = "", onDismiss = { pickDay = false }) {
         KeyboardPrefs.edit(context) { putString("day_look", it ?: "") }
         pickDay = false
     }
-    if (pickNight) LookPickerDialog("Night look", looks, allowBase = true, allowNone = false, noneLabel = "", onDismiss = { pickNight = false }) {
+    if (pickNight) LookPickerDialog("Night theme", looks, allowBase = true, allowNone = false, noneLabel = "", onDismiss = { pickNight = false }) {
         KeyboardPrefs.edit(context) { putString("night_look", it ?: "") }
         pickNight = false
     }

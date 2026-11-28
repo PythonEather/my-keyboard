@@ -227,6 +227,14 @@ internal fun FontSections(settings: KeyboardSettings) {
             format = { "${it.roundToInt()}%" },
             onCommit = { v -> KeyboardPrefs.edit(context) { putFloat("wave_amplitude_percent", v) } }
         )
+        // the bubble that shows a letter while a key is pressed can have a different shape from the buttons
+        ChoiceItem(
+            Icons.Rounded.ChatBubble, "Letter popup shape",
+            "The bubble above a pressed key. It only takes a shape when Shapes is set to Many (Colors and background)",
+            listOf("SAME" to "Same as the buttons", "OWN" to "Its own shape"),
+            if (settings.popupShapePreset.isEmpty()) "SAME" else "OWN"
+        ) { v -> KeyboardPrefs.edit(context) { putString("popup_shape_preset", if (v == "SAME") "" else settings.shapePreset) } }
+        if (settings.popupShapePreset.isNotEmpty()) GroupItem { Column(Modifier.padding(vertical = 16.dp)) { PopupShapePicker(settings) } }
     }
 }
 
@@ -251,6 +259,7 @@ internal fun ColorsPage(settings: KeyboardSettings) {
     val monet = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     PreviewSection(settings)
+    SettingsSection("Save as a theme") { SaveThemeAction() }
     // акцент — главный цвет клавиатуры: вверху и в одном месте (раньше он терялся среди цветов клавиш)
     val themeColors = PluginRepository.skinPlugin(settings)?.skin?.forMode(keyboardIsDark(settings))?.colors
     val themeAccent = themeColors?.get("accent")?.let { Color(it) }

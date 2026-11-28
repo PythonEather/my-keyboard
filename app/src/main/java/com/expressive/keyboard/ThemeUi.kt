@@ -392,6 +392,7 @@ internal fun ThemesPage(settings: KeyboardSettings, onNavigate: (SettingsPage) -
     val designSkins = DesignStyle.entries.map { it.skin }.toSet()
     val extra = plugins.filter { it.skin != null && it.id !in designSkins }
     SettingsSection(null) { ThemeModeItem(settings) }
+    SettingsSection("Save as a theme") { SaveThemeAction() }
     SettingsSection("Темы") {
         GroupItem {
             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

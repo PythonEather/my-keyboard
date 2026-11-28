@@ -197,6 +197,9 @@ class ComposeKeyboardService : InputMethodService(),
     /** Время копирования последней записи буфера, которую уже видели. */
     private var lastClipStamp = -1L
     private var clipOfferAt = 0L
+    /** The paste offer that typing hid: it comes back in an empty field or in a new field while it is still fresh. */
+    private var parkedOffer: String? = null
+    private var parkedOfferAt = 0L
     /** Слово, на которое нажали: его варианты в строке подсказок, выбор заменяет слово целиком. */
     private data class TapWord(val start: Int, val end: Int, val word: String)
     private var tapWord: TapWord? = null
@@ -661,11 +664,13 @@ class ComposeKeyboardService : InputMethodService(),
             kb.clipboard.clear()
             kb.pinnedClips.clear()
             kb.clipOffer = null
+            parkedOffer = null
             ClipStore.clear(this)
         }
         // the look for this app and this time of day: worn only while typing, nothing is saved
         runCatching { AutoLook.update(this, KeyboardPrefs.current(this), info?.packageName.orEmpty()) }
         resetForInput(info, restarting)
+        reofferParked()
         applyWindowColors()
         // подтип ввода (язык проверки правописания в приложении) — под текущий язык клавиатуры
         val enabled = Languages.enabled(settings)
@@ -1406,6 +1411,7 @@ class ComposeKeyboardService : InputMethodService(),
             }.getOrDefault(false)
         }
         if (kb.fieldEmpty != empty) kb.fieldEmpty = empty
+        if (empty) reofferParked()
         if (!empty && kb.toolsDismissed) kb.toolsDismissed = false
     }
 
@@ -2196,7 +2202,14 @@ class ComposeKeyboardService : InputMethodService(),
         // любое нажатие меняет текст — слово под курсором и его границы больше не верны
         tapWord = null
         if (kb.fieldEmpty && panelInput == null && (key.type == KeyType.CHARACTER || key.type == KeyType.SPACE)) kb.fieldEmpty = false
-        if (kb.clipOffer != null && key.type in OFFER_BREAKERS && panelInput == null) kb.clipOffer = null
+        if (kb.clipOffer != null && key.type in OFFER_BREAKERS && panelInput == null) {
+            // typing hides the offer but does not lose it: an empty field or a new field brings it back (reofferParked)
+            if (!kb.clipOfferSecret) {
+                parkedOffer = kb.clipOffer
+                parkedOfferAt = clipOfferAt
+            }
+            kb.clipOffer = null
+        }
         when (key.type) {
             KeyType.CHARACTER -> {
                 // клавиша-команда из раскладки плагина
@@ -2787,6 +2800,7 @@ class ComposeKeyboardService : InputMethodService(),
         }
         kb.clipboard.retainAll(keep)
         if (kb.clipOffer?.let { it !in keep } == true) kb.clipOffer = null
+        parkedOffer = null
         ClipStore.save(this, kb.clipboard)
     }
 
@@ -2795,6 +2809,7 @@ class ComposeKeyboardService : InputMethodService(),
         kb.clipboard.remove(text)
         if (kb.pinnedClips.remove(text)) savePinned()
         if (kb.clipOffer == text) kb.clipOffer = null
+        if (parkedOffer == text) parkedOffer = null
         ClipImages.delete(text)
         ClipStore.forget(text)
         ClipStore.save(this, kb.clipboard)
@@ -2819,6 +2834,7 @@ class ComposeKeyboardService : InputMethodService(),
 
     override fun commitClip(entry: String) {
         bumpClip(entry)
+        if (parkedOffer == entry) parkedOffer = null
         if (!ClipImages.isImage(entry)) {
             commitPastedText(entry)
             return
@@ -2844,6 +2860,7 @@ class ComposeKeyboardService : InputMethodService(),
         val entry = kb.clipOffer ?: return
         val secret = kb.clipOfferSecret
         kb.clipOffer = null
+        parkedOffer = null
         kb.clipOfferSecret = false
         // пароль вставляется как есть: ни в историю, ни в «недавние»
         if (secret) commitText(entry) else commitClip(entry)
@@ -3101,6 +3118,20 @@ class ComposeKeyboardService : InputMethodService(),
     override fun dismissClipOffer() {
         HapticsEngine.tick(this, inputView, settings)
         kb.clipOffer = null
+        parkedOffer = null
+    }
+
+    /** Shows the paste offer again that typing hid, if it is still fresh and was not pasted, dismissed or replaced. */
+    private fun reofferParked() {
+        val p = parkedOffer ?: return
+        if (kb.clipOffer != null) return
+        if (System.currentTimeMillis() - parkedOfferAt > CLIP_OFFER_MS || flags.isPassword || p !in kb.clipboard) {
+            parkedOffer = null
+            return
+        }
+        kb.clipOffer = p
+        kb.clipOfferSecret = false
+        clipOfferAt = parkedOfferAt
     }
 
     /** Первая текстовая запись буфера — для шаблонов {clipboard}. */
@@ -3125,6 +3156,7 @@ class ComposeKeyboardService : InputMethodService(),
             kb.clipOffer = entry
             kb.clipOfferSecret = false
             clipOfferAt = stamp
+            parkedOffer = null
         }
     }
 
@@ -3233,6 +3265,7 @@ class ComposeKeyboardService : InputMethodService(),
             kb.clipOffer = text
             kb.clipOfferSecret = true
             clipOfferAt = stamp
+            parkedOffer = null
         }
         true
     }.getOrDefault(false)

@@ -635,6 +635,10 @@ internal fun KeyboardScreen(
         else openProgress.animateTo(1f, spring(dampingRatio = tr.damping, stiffness = tr.stiffness * k * k))
     }
     val spec = remember(settings.shapePreset, settings.waveCount, settings.waveAmplitudePercent, settings.shapeAmount) { settings.accentSpec().accent(settings) }
+    // the letter popup may have its own shape (Keys and font > Button shape)
+    val popupSpec = remember(settings.popupShapePreset, spec) {
+        if (settings.popupShapePreset.isEmpty()) spec else WavySpec.of(ExpressiveShapePreset.fromId(settings.popupShapePreset))
+    }
     val panel = state.panel
     val lang = remember(state.language, settings.langLayouts, Languages.extra) {
         Languages.applyUserLayouts(settings.langLayouts)
@@ -755,7 +759,7 @@ internal fun KeyboardScreen(
             ScreenPanelLayer(if (showKeys) keysPx else 0, palette, font)
             ScreenExitButton()
         }
-        PopupLayer(popup, palette, font, spec.decor(settings), settings.animPopup, settings.animSpeed, settings.popupStyle)
+        PopupLayer(popup, palette, font, popupSpec.decor(settings), settings.animPopup, settings.animSpeed, settings.popupStyle)
         ScriptFrameTicker()
         ModFxTicker()
         SecurityIndicatorLayer(settings)

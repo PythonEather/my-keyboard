@@ -162,6 +162,8 @@ data class KeyboardSettings(
     val rowSpacingDp: Float = 8f,
     val bottomOffsetDp: Float = DEFAULT_BOTTOM_OFFSET_DP,
     val shapePreset: String = ExpressiveShapePreset.COOKIE_12.id,
+    /** Own shape for the letter popup bubble; empty = the same as shapePreset. */
+    val popupShapePreset: String = "",
     val waveCount: Int = 12,
     val waveAmplitudePercent: Float = 6f,
     val showNumberRow: Boolean = false,
@@ -618,6 +620,10 @@ object KeyboardPrefs {
         return state
     }
 
+    /** The settings the keyboard would have while wearing [values] (a saved look). Nothing is written. For thumbnails. */
+    fun settingsWith(context: Context, values: Map<String, Any?>): KeyboardSettings =
+        read(OverlayPrefs(prefs(context), values))
+
     fun edit(context: Context, block: SharedPreferences.Editor.() -> Unit) {
         val e = prefs(context).edit()
         e.block()
@@ -637,6 +643,7 @@ object KeyboardPrefs {
             bottomOffsetDp = p.getFloat("bottom_offset_dp", DEFAULT_BOTTOM_OFFSET_DP).coerceIn(BOTTOM_OFFSET_RANGE),
             shapePreset = p.getString("accent_shape_preset", ExpressiveShapePreset.COOKIE_12.id)
                 ?: ExpressiveShapePreset.COOKIE_12.id,
+            popupShapePreset = p.getString("popup_shape_preset", "") ?: "",
             waveCount = p.getInt("wave_count", 12).coerceIn(4, 18),
             waveAmplitudePercent = p.getFloat("wave_amplitude_percent", 6f).coerceIn(0f, 14f),
             showNumberRow = p.getBoolean("show_number_row", false),
@@ -906,7 +913,7 @@ object KeyboardPrefs {
             "system_spellcheck", "edit_bar", "auto_space_punct", "eco_mode", "eco_press", "eco_panels", "eco_blur", "eco_trail", "eco_preview", "eco_haptics", "eco_sound", "eco_suggestions", "dash_merge", "clip_screenshots", "correct_everywhere", "dynamic_zones", "ai_voice_cleanup", "tools_button", "pinned_tools", "landscape_split"
         ).forEach { put(it, 'b') }
         listOf(
-            "theme_mode", "accent_shape_preset", "haptic_mode", "font_style", "color_source", "one_handed", "space_swipe", "photo_fit", "key_push_mode", "emoji_key_pos", "typing_glow_edge", "typing_glow_color", "edge_swipe_opposite", "day_night_mode", "space_tick_strength",
+            "theme_mode", "accent_shape_preset", "popup_shape_preset", "haptic_mode", "font_style", "color_source", "one_handed", "space_swipe", "photo_fit", "key_push_mode", "emoji_key_pos", "typing_glow_edge", "typing_glow_color", "edge_swipe_opposite", "day_night_mode", "space_tick_strength",
             "eco_when", "globe_long_press", "tools_long_press", "window_blur", "hold_mode", "ai_provider", "space_long_action", "languages", "auto_correct_strength", "translate_target", "gemini_model", "anthropic_model", "openai_model", "groq_model", "openrouter_model", "toolbar_order", "toolbar_hidden", "user_layouts",
             "space_left_key", "space_right_key", "mic_action", "popup_style", "key_variants", "sound_style", "emoji_style", "clipboard_keep", "app_language", "design_style", "shape_amount", "skin_options", "anim_press", "anim_popup", "anim_panel", "anim_panel_cfg", "anim_open", "anim_open_cfg", "custom_anims", "lang_layouts"
         ).forEach { put(it, 's') }

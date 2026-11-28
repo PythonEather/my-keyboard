@@ -108,7 +108,7 @@ internal object LookStore {
     const val MAX = 30
 
     val KEYS: Map<String, Char> = buildMap {
-        "theme_mode design_style color_source accent_shape_preset shape_amount font_style window_blur skin_plugin skin_options popup_style photo_fit"
+        "theme_mode design_style color_source accent_shape_preset popup_shape_preset shape_amount font_style window_blur skin_plugin skin_options popup_style photo_fit"
             .split(' ').forEach { put(it, 's') }
         "seed_color color_background color_key color_key_text color_func color_func_text color_accent color_accent_text font_weight wave_count"
             .split(' ').forEach { put(it, 'i') }

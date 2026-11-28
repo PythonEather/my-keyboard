@@ -522,47 +522,6 @@ internal fun ChoiceItem(icon: ImageVector, title: String, subtitle: String?, opt
     }
 }
 
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-internal fun ShapePicker(settings: KeyboardSettings) {
-    val context = LocalContext.current
-    val cs = MaterialTheme.colorScheme
-    // все формы сеткой: их больше тридцати, в одну строку они не помещаются
-    FlowRow(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)
-    ) {
-        ExpressiveShapePreset.entries.forEach { preset ->
-            val isSel = settings.shapePreset == preset.id
-            val spec = if (isSel) settings.accentSpec()
-            else WavySpec.of(preset)
-            val scale by animateFloatAsState(if (isSel) 1f else 0.82f, spring(dampingRatio = 0.5f, stiffness = 500f), label = "shapeScale")
-            val rot by animateFloatAsState(if (isSel && preset.tunable) 45f else 0f, spring(dampingRatio = 0.6f, stiffness = 200f), label = "shapeRot")
-            Column(
-                Modifier.width(72.dp).clip(RoundedCornerShape(20.dp))
-                    .clickable { KeyboardPrefs.applyPreset(context, preset) }
-                    .padding(vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Box(
-                    Modifier.size(56.dp).graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                    }.wavyBackground(spec, if (isSel) cs.primary else cs.secondaryContainer) { rot },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isSel) Icon(Icons.Rounded.Check, null, tint = cs.onPrimary)
-                }
-                Text(
-                    tr(preset.title), style = MaterialTheme.typography.labelMedium,
-                    color = if (isSel) cs.primary else cs.onSurfaceVariant, maxLines = 1
-                )
-            }
-        }
-    }
-}
-
 /** Живой мини-предпросмотр клавиатуры: цвета, фон, форма, шрифт и размеры берутся из настроек. */
 @Composable
 internal fun StylePreview(settings: KeyboardSettings, spec: WavySpec) {

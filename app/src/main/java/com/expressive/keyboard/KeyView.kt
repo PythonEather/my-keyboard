@@ -1096,7 +1096,7 @@ internal fun BoxScope.PopupBubbles(
         popupStyle == "CIRCLE" -> null
         spec.profile == ShapeProfile.CIRCLE -> 16f
         // полукруг, стрелка и т.п. для буквы не годятся
-        spec.profile == ShapeProfile.FIXED && spec.preset !in ExpressiveShapePreset.decorative -> 16f
+        spec.profile == ShapeProfile.FIXED && spec.preset !in ExpressiveShapePreset.popupFriendly -> 16f
         else -> null
     }
     val shapeSpec = if (popupStyle == "CIRCLE") WavySpec.Circle else spec
