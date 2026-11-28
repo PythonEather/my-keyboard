@@ -123,6 +123,10 @@ object GlSupport {
         is Number -> floatArrayOf(v.toFloat())
         is Boolean -> floatArrayOf(if (v) 1f else 0f)
         is List<*> -> FloatArray(v.size) { j -> (v[j] as? Number)?.toFloat() ?: 0f }
+        // packed arrays (a bridge that does not box every number): no per-item conversion
+        is FloatArray -> v.copyOf()
+        is DoubleArray -> FloatArray(v.size) { j -> v[j].toFloat() }
+        is IntArray -> FloatArray(v.size) { j -> v[j].toFloat() }
         is String -> PluginParser.parseColor(v)?.let { c ->
             floatArrayOf(((c shr 16) and 255) / 255f, ((c shr 8) and 255) / 255f, (c and 255) / 255f, ((c ushr 24) and 255) / 255f)
         }
@@ -132,11 +136,42 @@ object GlSupport {
     fun putUniforms(key: String, patch: Map<String, Any?>) {
         if (live.size > 64 && !live.containsKey(key)) live.clear()
         val m = live.getOrPut(key) { ConcurrentHashMap() }
+        var changed = false
         for ((k, v) in patch) {
-            val f = toFloats(v)
-            if (f != null) m[k] = f
+            val old = m[k]
+            // the same values again (a mod sends its whole set every frame): no new array, and a still shader is not woken up
+            if (old != null && sameValue(old, v)) continue
+            val f = toFloats(v) ?: continue
+            m[k] = f
+            changed = true
         }
-        liveVersion++
+        if (changed) liveVersion++
+    }
+
+    /** Whether [v] would convert to exactly [old], without allocating anything. */
+    private fun sameValue(old: FloatArray, v: Any?): Boolean = when (v) {
+        is Number -> old.size == 1 && old[0] == v.toFloat()
+        is Boolean -> old.size == 1 && old[0] == (if (v) 1f else 0f)
+        is List<*> -> {
+            var same = old.size == v.size
+            var j = 0
+            while (same && j < old.size) {
+                if (old[j] != ((v[j] as? Number)?.toFloat() ?: 0f)) same = false
+                j++
+            }
+            same
+        }
+        is FloatArray -> old.contentEquals(v)
+        is DoubleArray -> {
+            var same = old.size == v.size
+            var j = 0
+            while (same && j < old.size) {
+                if (old[j] != v[j].toFloat()) same = false
+                j++
+            }
+            same
+        }
+        else -> false
     }
 
     fun dropLive(key: String) {
@@ -425,6 +460,8 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
         if (surface == EGL14.EGL_NO_SURFACE) return false
         if (!EGL14.eglMakeCurrent(display, surface, surface, context)) return false
         uintOk = glVersion >= 3 || (GLES20.glGetString(GLES20.GL_EXTENSIONS) ?: "").contains("GL_OES_element_index_uint")
+        // GL_DITHER is on by default; the surface is 8 bits per channel, where it only costs time
+        GLES20.glDisable(GLES20.GL_DITHER)
         return true
     }
 
@@ -460,6 +497,7 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
             val p = prepared
             if (paused || p == null || viewW <= 0 || viewH <= 0) {
                 wasPaused = true
+                due = 0L
                 LockSupport.parkNanos(30_000_000L)
                 continue
             }
@@ -476,21 +514,39 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
             lastLive = live
             lastW = viewW
             lastH = viewH
-            val start = SystemClock.elapsedRealtime()
             val startNs = System.nanoTime()
             val t = ((SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000_000.0 % 3600.0).toFloat()
             if (!draw(p, t, n++)) break
             val cost = System.nanoTime() - startNs
             GlSupport.recordDraw(cost)
             govern(p.item, cost)
-            val wait = 1000L / effectiveFps(p.item) - (SystemClock.elapsedRealtime() - start)
-            if (wait > 0L) {
-                try {
-                    Thread.sleep(wait)
-                } catch (e: InterruptedException) {
-                    // woke up early: keep drawing
-                }
+            pace(effectiveFps(p.item))
+        }
+    }
+
+    /** The vsync time (ns) at which the next frame is due, see pace(). 0: start again from now. */
+    private var due = 0L
+
+    /**
+     * Waits for the next frame on the display's vsync instead of sleeping, so the TextureView gets each frame in time for the next UI
+     * frame. The due time moves by one frame interval per frame: 24 fps on a 60 Hz display alternates 2 and 3 display frames instead of
+     * rounding to 20 or 30. A late frame is drawn on the very next vsync, but lost time is not caught up.
+     */
+    private fun pace(fps: Int) {
+        val target = 1_000_000_000L / max(1, fps)
+        val now = System.nanoTime()
+        due = if (due == 0L) now + target else due + target
+        if (due < now - target) due = now
+        val half = GlVsync.periodNs / 2
+        while (alive && !paused) {
+            val v = GlVsync.await(80L)
+            if (v == 0L) {
+                // no vsync (main thread stuck, display off): a plain timed wait, so the layer never stalls
+                val left = due - System.nanoTime()
+                if (left > 0L) LockSupport.parkNanos(left)
+                return
             }
+            if (v >= due - half) return
         }
     }
 
@@ -1019,6 +1075,10 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
             }
             i++
         }
+        if (item.cull) {
+            GLES20.glEnable(GLES20.GL_CULL_FACE)
+            GLES20.glCullFace(GLES20.GL_BACK)
+        }
         val inst = if (m.instances > 1 && glVersion >= 3) m.instances else 1
         if (m.instances > 1 && glVersion < 3 && !instWarned) {
             instWarned = true
@@ -1042,6 +1102,8 @@ private class GlRenderer(private val st: SurfaceTexture, private val app: Contex
         } else {
             GLES20.glDrawArrays(m.mode, 0, m.count)
         }
+        // the 3D scene tracks the culling state itself and expects it off
+        if (item.cull) GLES20.glDisable(GLES20.GL_CULL_FACE)
         for (loc in divided) GLES30.glVertexAttribDivisor(loc, 0)
         for (loc in enabled) GLES20.glDisableVertexAttribArray(loc)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)

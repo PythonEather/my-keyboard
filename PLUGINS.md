@@ -383,14 +383,15 @@ has its own render thread and OpenGL context, so a slow shader or a busy script 
 | `uniforms` | `{ name: value }`: a number, a boolean, an array of numbers (`vec2`..`vec4`, or a whole `float[]`) or a color `"#RRGGBB"` / `"#AARRGGBB"` (into `vec4`) |
 | `x`, `y`, `w`, `h` | Where the layer is, in dp. Without `w` and `h` it covers the whole drawing area |
 | `scale` | Resolution of the render buffer, 0.1..1 (default 1). `0.5` draws a quarter of the pixels, which is cheap for soft effects |
-| `fps` | 1..60 (default 30) |
+| `fps` | 1..60 (default 30). Frames are drawn on the display's vsync, so a rate that does not divide the refresh rate (24 on 60 Hz) alternates between 2 and 3 display frames; 15, 20, 30 and 60 are the smoothest on a 60 Hz display |
 | `depth` | `true` asks for a depth buffer (when the phone has none, the layer still draws and the log says so) |
 | `clear` | The color the buffer is cleared to before each frame (default transparent) |
 | `id` | A name for the layer. With it, `kb.glUniforms(id, { name: value })` changes uniforms without resending the list |
 | `feedback` | `true` turns on render-to-texture: the layer is drawn into two off-screen buffers that swap every frame, and a shader that declares `uniform sampler2D iPrev;` reads the **previous frame** (`texture2D(iPrev, vUv)`, or `texture(iPrev, vUv)` in ES 3). This unlocks motion blur, VHS trails, bloom, mirrors and feedback fractals. Output is premultiplied alpha like any layer. The first frame is transparent. Costs two textures of the buffer size |
 | `textures` | `{ name: source }`: up to 4 pictures the shader reads as `uniform sampler2D name;` (see **Textures in GLSL layers** below). A source is a file name from the plugin's `.zip`, a `data:image/...;base64,` URI or the value of an `image` setting (`kb.config().photo`); `{ src, wrap, filter, mipmap }` sets how it is sampled |
 | `autoQuality` | The host lowers the resolution when frames are slow (step down 15% after ~10 slow frames, back up slowly when there is room) and lowers fps and resolution when the phone heats up (Android 10+: `THERMAL_STATUS_MODERATE` = max 30 fps and 85% resolution, `SEVERE` = 20 fps and 70%, `CRITICAL` = 12 fps and 50%). Default `true`; `false` draws exactly what you asked for |
-| `minScale` | The lowest resolution factor the governor may use for this layer, 0.1..1 (default 0.4). It multiplies `scale` |
+| `minScale` | The lowest resolution factor the governor may use for this layer, 0.1..1 (default 0.4). It **multiplies** `scale`: `scale: 0.5, minScale: 0.6` never goes below 0.3 of the screen. `minScale: 1` locks the resolution. The governor moves in fixed steps (1, 0.85, 0.72 ... down to the minimum), not in small slides, because every new size reallocates the buffers |
+| `cull` | `true` turns on back-face culling for the layer's mesh: triangles that face away from the camera (clockwise on screen) are not shaded. On a closed mesh that is about half of the pixel work. Needs counter-clockwise triangles for the front side; default `false`. Check with `kb.supports("glCull")` |
 | `scene` | `{ models, camera, lights, objects, ... }`: the built-in 3D engine draws lit 3D objects and models after the shader, in the same depth buffer (see **3D scenes** below). Check with `kb.supports("scene3d")` |
 | `alpha`, `rotation` | Like any element |
 

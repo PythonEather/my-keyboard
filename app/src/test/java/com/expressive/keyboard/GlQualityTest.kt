@@ -28,6 +28,39 @@ class GlQualityTest {
     }
 
     @Test
+    fun minimumOfOneLocksTheResolution() {
+        val g = GlGovernor()
+        repeat(1000) { g.frame(60.0, 33.0, 1f) }
+        assertEquals(1f, g.factor, 0f)
+    }
+
+    @Test
+    fun theFactorOnlyTakesStepsFromTheLadder() {
+        val g = GlGovernor()
+        val seen = HashSet<Float>()
+        repeat(20_000) { i ->
+            g.frame(if ((i / 700) % 2 == 0) 40.0 else 5.0, 33.0, 0.3f)
+            seen.add(g.factor)
+        }
+        assertTrue("distinct factors: $seen", seen.size <= 9)
+        assertTrue(seen.all { it >= 0.3f && it <= 1f })
+    }
+
+    @Test
+    fun aStepUpThatIsUndoneAtOnceMakesTheNextOneWaitLonger() {
+        val g = GlGovernor()
+        var ups = 0
+        var prev = g.factor
+        repeat(5000) {
+            // full resolution is too slow, one step lower is comfortably fast: it would flip back and forth
+            g.frame(if (g.factor >= 0.99f) 30.0 else 15.0, 33.0, 0.4f)
+            if (g.factor > prev + 0.0001f) ups++
+            prev = g.factor
+        }
+        assertTrue("steps up: $ups", ups <= 10)
+    }
+
+    @Test
     fun heatLowersFpsAndResolutionInSteps() {
         assertEquals(60, GlThermal.capFor(0))
         assertEquals(30, GlThermal.capFor(2))

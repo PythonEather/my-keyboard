@@ -200,7 +200,9 @@ sealed interface OverlayItem {
         /** Images the shader reads as `uniform sampler2D <name>` (see GlTextures): files of the plugin's .zip or data: URIs. */
         val textures: List<GlTexSpec> = emptyList(),
         /** The built-in 3D engine: models, camera, lights and objects drawn after the shader, in the same depth buffer (see Scene3d*.kt). */
-        val scene: SceneSpec? = null
+        val scene: SceneSpec? = null,
+        /** Back-face culling for the layer's mesh: triangles that face away from the camera are not shaded (counter-clockwise = front). */
+        val cull: Boolean = false
     ) : OverlayItem {
         val liveKey: String? get() = id?.let { GlSupport.liveKey(pluginId, it) }
     }
@@ -281,7 +283,8 @@ sealed interface OverlayItem {
                         auto = o["autoQuality"] != false,
                         minScale = f(o, "minScale", 0.4f).coerceIn(0.1f, 1f),
                         textures = GlTextures.parse(o["textures"]),
-                        scene = scene
+                        scene = scene,
+                        cull = o["cull"] == true
                     )
                 }
                 "batch" -> GlBatch.parse(o, x, y, f(o, "w", 0f), f(o, "h", 0f), alpha, rot)

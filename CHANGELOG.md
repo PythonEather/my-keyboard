@@ -2,6 +2,12 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.39
+- Smoother GL layers: a layer now draws on the display's vsync instead of sleeping to its frame rate, so the picture judders less on the TextureView. The frame rate you ask for is kept on average (24 fps on a 60 Hz screen alternates 2 and 3 display frames). If no vsync arrives for 80 ms the layer falls back to a timed wait and never stalls
+- The resolution governor moves in fixed steps (1, 0.85, 0.72 ... down to the minimum) instead of many small ones, so the buffers are reallocated less often. A step up that has to be undone at once makes the next step up wait twice as long. `minScale: 1` locks the resolution. `minScale` still multiplies `scale`, now spelled out in PLUGINS.md
+- kb.glUniforms: sending the same values again does not make a new array and does not wake a still shader. It also accepts packed float, double and int arrays when the script bridge provides them
+- New layer option `cull: true`: back-face culling for the layer's mesh (kb.supports("glCull")). Dithering is switched off in the GL context
+
 ## 11.2.38
 - Faster settings: opening a page no longer waits for the whole page to be built. The title bar and the slide start at once, and the page content appears a moment later with a soft fade
 - Faster ?123, symbols page, emoji and language keys: they no longer start the press shockwave ring and the key ripple, which ran over the keyboard rebuilding underneath and made quick repeated taps lag. They still get the colour sweep. All other keys keep the shockwave as before

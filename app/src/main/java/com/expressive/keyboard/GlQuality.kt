@@ -55,17 +55,28 @@ object GlThermal {
 
 /**
  * Picks a resolution factor from how long frames really take. Pure logic (no Android classes), unit-tested.
- * Over 90% of the frame budget for ten frames in a row: step down by 15%. Under half the budget for 150 frames: step back up by 10%.
+ * The factor only takes values from a fixed ladder (1, 0.85, 0.72, 0.61 ... down to the minimum), because every new factor makes the
+ * layer reallocate its buffers, which is a visible hitch of its own. Over 90% of the frame budget for ten frames in a row: one step
+ * down. Under half the budget for 150 frames: one step up. A step up that is followed by a step down within ten seconds was too
+ * eager, so the next step up waits twice as long (up to 1200 frames), and the wait resets after 3000 stable frames.
+ * The minimum is a multiplier on the layer's scale; a minimum of 1 locks the resolution.
  */
 class GlGovernor {
     var factor = 1f
         private set
+    private var level = 0
     private var avg = 0.0
     private var slow = 0
     private var fast = 0
+    private var upNeeded = UP_FRAMES
+    private var sinceUp = NEVER
 
     fun frame(ms: Double, budgetMs: Double, minScale: Float) {
-        if (factor < minScale) factor = minScale
+        val floor = minScale.coerceIn(0.1f, 1f)
+        val last = lastLevel(floor)
+        if (level > last) level = last
+        if (sinceUp < NEVER) sinceUp++
+        if (sinceUp >= STABLE_FRAMES) upNeeded = UP_FRAMES
         avg = if (avg == 0.0) ms else avg * 0.9 + ms * 0.1
         when {
             avg > budgetMs * 0.9 -> {
@@ -83,22 +94,55 @@ class GlGovernor {
         }
         if (slow >= 10) {
             slow = 0
-            if (factor > minScale) {
-                factor = max(minScale, factor * 0.85f)
+            if (level < last) {
+                level++
                 avg = 0.0
+                if (sinceUp < FLIP_FRAMES) upNeeded = min(upNeeded * 2, MAX_UP_FRAMES)
             }
-        } else if (fast >= 150 && factor < 1f) {
+        } else if (fast >= upNeeded && level > 0) {
             fast = 0
-            factor = min(1f, factor * 1.1f)
+            level--
+            sinceUp = 0
             avg = 0.0
         }
+        factor = factorAt(level, floor)
     }
 
     fun reset() {
         factor = 1f
+        level = 0
         avg = 0.0
         slow = 0
         fast = 0
+        upNeeded = UP_FRAMES
+        sinceUp = NEVER
+    }
+
+    private fun factorAt(level: Int, floor: Float): Float {
+        var f = 1f
+        repeat(level) { f *= STEP }
+        return max(floor, f)
+    }
+
+    /** The lowest ladder step for this minimum (0 when the minimum is 1: the resolution never drops). */
+    private fun lastLevel(floor: Float): Int {
+        var l = 0
+        var f = 1f
+        while (f > floor && l < MAX_LEVEL) {
+            f *= STEP
+            l++
+        }
+        return l
+    }
+
+    private companion object {
+        const val STEP = 0.85f
+        const val MAX_LEVEL = 16
+        const val UP_FRAMES = 150
+        const val MAX_UP_FRAMES = 1200
+        const val FLIP_FRAMES = 600
+        const val STABLE_FRAMES = 3000
+        const val NEVER = 1_000_000
     }
 }
 

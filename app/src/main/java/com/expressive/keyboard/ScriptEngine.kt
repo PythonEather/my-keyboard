@@ -1461,7 +1461,7 @@ object ScriptHost {
         def(kb, "supports") { a ->
             when (str(a, 0)) {
                 "shader", "postEffect" -> ModShaders.supported
-                "gl", "batch", "groups", "panZoom", "glFeedback", "glInstancing", "glDebug", "glQuality", "glTextures", "imageSettings", "scene3d" -> true
+                "gl", "batch", "groups", "panZoom", "glFeedback", "glInstancing", "glDebug", "glQuality", "glTextures", "glCull", "imageSettings", "scene3d" -> true
                 "labelBlur" -> android.os.Build.VERSION.SDK_INT >= 31
                 "particles", "keyEffects", "pointer" -> true
                 "sensors" -> ModSensors.available(ctx)
