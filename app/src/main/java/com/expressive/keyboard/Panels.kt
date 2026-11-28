@@ -848,6 +848,7 @@ internal fun ClipboardPanel(state: KeyboardState, actions: KeyboardActions, pale
                 gridItems(items, key = { it }) { t ->
                     val isPinned = t in pinned
                     val image = ClipImages.isImage(t)
+                    val longText = LongTexts.info(t)
                     val cat = ClipCategories.byId(ClipCategories.assigned[t])
                     val moveTarget = assigning == t
                     Box(
@@ -864,6 +865,26 @@ internal fun ClipboardPanel(state: KeyboardState, actions: KeyboardActions, pale
                                     cat.name, color = Color.White, fontFamily = font, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1,
                                     modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).clip(CircleShape)
                                         .background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        } else if (longText != null) {
+                            // long copied text: a card with its size and first words; the text itself lives in a .txt file
+                            Column(Modifier.heightIn(min = 96.dp).padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 34.dp)) {
+                                if (cat != null) {
+                                    Text(
+                                        cat.name, color = palette.accent, fontFamily = font, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1,
+                                        modifier = Modifier.padding(bottom = 2.dp)
+                                    )
+                                }
+                                Text(
+                                    tr("Long text") + " · " + LongTexts.sizeLabel(longText.bytes),
+                                    color = palette.accent, fontFamily = font, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 2.dp)
+                                )
+                                Text(
+                                    if (cat?.secret == true && !reveal) ClipCategories.mask(longText.preview) else longText.preview,
+                                    color = if (isPinned) palette.onAccentSoft else palette.onLetter, fontFamily = font, fontSize = 14.sp,
+                                    maxLines = 3, overflow = TextOverflow.Ellipsis
                                 )
                             }
                         } else {
@@ -900,6 +921,12 @@ internal fun ClipboardPanel(state: KeyboardState, actions: KeyboardActions, pale
                                     if (isPinned) Icons.Rounded.PushPin else Icons.Outlined.PushPin, tr("Закрепить"),
                                     tint = if (isPinned) palette.accent else badgeFg, modifier = Modifier.size(16.dp)
                                 )
+                            }
+                            if (longText != null) {
+                                Box(
+                                    Modifier.size(28.dp).clip(CircleShape).clickable { actions.shareLongText(t) },
+                                    contentAlignment = Alignment.Center
+                                ) { Icon(Icons.Rounded.Share, tr("Share the file"), tint = badgeFg, modifier = Modifier.size(16.dp)) }
                             }
                         }
                     }

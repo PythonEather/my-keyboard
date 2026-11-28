@@ -260,6 +260,8 @@ interface KeyboardActions {
     fun commitClip(entry: String) {}
     fun pasteClipOffer() {}
     fun dismissClipOffer() {}
+    /** Long copied text: send the whole .txt file through the Android share sheet. */
+    fun shareLongText(entry: String) {}
     /** Удержание кнопки языка, если в настройках выбрано не «список языков». */
     fun globeHold() {}
     /** Следующий включённый язык: кнопка «смена языка» справа вверху. */
@@ -343,6 +345,7 @@ internal class SafeActions(private val a: KeyboardActions, private val onError: 
     override fun commitClip(entry: String) = guard { a.commitClip(entry) }
     override fun pasteClipOffer() = guard { a.pasteClipOffer() }
     override fun dismissClipOffer() = guard { a.dismissClipOffer() }
+    override fun shareLongText(entry: String) = guard { a.shareLongText(entry) }
     override fun globeHold() = guard { a.globeHold() }
     override fun switchLanguage() = guard { a.switchLanguage() }
     override fun editKey(id: String) = guard { a.editKey(id) }

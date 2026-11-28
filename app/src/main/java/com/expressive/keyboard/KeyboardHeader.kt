@@ -560,7 +560,7 @@ internal fun ClipOfferStrip(entry: String, actions: KeyboardActions, palette: Ke
                 }
             }
             Text(
-                if (image) tr("Вставить картинку") else if (secret) tr("Вставить пароль") + "  ••••••••" else entry.replace('\n', ' '),
+                if (image) tr("Вставить картинку") else if (secret) tr("Вставить пароль") + "  ••••••••" else if (LongTexts.isLong(entry)) LongTexts.offerLabel(entry) else entry.replace('\n', ' '),
                 color = palette.onAccentSoft, fontFamily = font, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )

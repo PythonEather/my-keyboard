@@ -113,7 +113,7 @@ internal fun ShapeGroupsPicker(selectedId: String, activeSpec: WavySpec, onPick:
             }
             Column(Modifier.weight(1f)) {
                 Text(tr(current.title), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(tr("Your shape now"), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                Text(tr("Your shape now"), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             IconButton(onClick = {
                 val next = if (isFav) favs - current.id else (listOf(current.id) + favs).take(12)
@@ -126,13 +126,18 @@ internal fun ShapeGroupsPicker(selectedId: String, activeSpec: WavySpec, onPick:
                     tint = if (isFav) cs.primary else cs.onSurfaceVariant
                 )
             }
-            FilledTonalButton(onClick = {
+        }
+
+        // "Surprise me" has its own full-width row, so the shape name keeps room to breathe (11.2.37)
+        FilledTonalButton(
+            onClick = {
                 val choices = ExpressiveShapePreset.entries.filter { it.id != current.id }
                 if (choices.isNotEmpty()) pick(choices.random())
-            }) {
-                Icon(Icons.Rounded.Shuffle, null, modifier = Modifier.size(18.dp))
-                Text(tr("Surprise me"), modifier = Modifier.padding(start = 6.dp), maxLines = 1)
-            }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Rounded.Shuffle, null, modifier = Modifier.size(18.dp))
+            Text(tr("Surprise me"), modifier = Modifier.padding(start = 6.dp), maxLines = 1)
         }
 
         if (favs.isNotEmpty()) MiniShapeRow("Favourites", favs, selectedId, activeSpec) { pick(it) }

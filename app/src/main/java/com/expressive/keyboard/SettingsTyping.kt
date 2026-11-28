@@ -492,6 +492,85 @@ internal fun TypingPage(settings: KeyboardSettings, part: SettingsPage) {
             }
         }
     }
+    if (part == SettingsPage.CLIPBOARD && settings.clipboardHistory) SettingsSection("Long copied text") {
+        val longScope = rememberCoroutineScope()
+        var files by remember { mutableStateOf<List<String>>(emptyList()) }
+        var reload by remember { mutableStateOf(0) }
+        var confirmAll by remember { mutableStateOf(false) }
+        LaunchedEffect(reload, settings.longTextLimit) { files = withContext(Dispatchers.IO) { LongTexts.listAll(context, settings) } }
+        InfoCard(
+            Icons.Rounded.Description,
+            "A very long copy can freeze the keyboard. Above the limit, the text is saved as a .txt file and the clipboard shows a small card instead. Tap the card to paste the first 5,000 characters, or use its share button to send the whole file"
+        )
+        ChoiceItem(
+            Icons.Rounded.ContentCut, "Save as a file above", "Copies with more characters than this become a file. Off keeps every copy as plain text",
+            listOf("OFF" to "Off", "20000" to "20k", "50000" to "50k", "100000" to "100k", "250000" to "250k"),
+            if (settings.longTextLimit <= 0) "OFF" else settings.longTextLimit.toString()
+        ) { v -> KeyboardPrefs.edit(context) { putInt("long_text_limit", if (v == "OFF") 0 else v.toInt()) } }
+        AnimatedVisibility(settings.longTextLimit > 0) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                ChoiceItem(
+                    Icons.Rounded.Folder, "Where to save",
+                    "Downloads is Downloads/Expressive Keyboard: any file manager can open it. Private is only visible to the keyboard. Android 9 and older always use Private",
+                    listOf("DOWNLOADS" to "Downloads", "PRIVATE" to "Private"), settings.longTextPlace
+                ) { v -> KeyboardPrefs.edit(context) { putString("long_text_place", v) } }
+                ChoiceItem(
+                    Icons.Rounded.Schedule, "Delete files after",
+                    "Counted from the last time you used the card. Pinned cards stay. The keyboard only deletes files it made itself",
+                    listOf("1D" to "1 day", "7D" to "7 days", "30D" to "30 days", "NEVER" to "Never"), settings.longTextKeep
+                ) { v -> KeyboardPrefs.edit(context) { putString("long_text_keep", v) } }
+                SliderItem(
+                    icon = Icons.Rounded.History, title = "Keep the newest",
+                    value = settings.longTextMax.toFloat(), range = 3f..50f,
+                    format = { "${it.roundToInt()}" },
+                    onCommit = { v -> KeyboardPrefs.edit(context) { putInt("long_text_max", v.roundToInt()) } }
+                )
+            }
+        }
+        if (files.isEmpty()) {
+            InfoCard(Icons.Rounded.Info, "No long texts saved yet")
+        } else {
+            files.forEach { e ->
+                val i = LongTexts.info(e)
+                if (i != null) ActionItem(
+                    Icons.Rounded.Description,
+                    LongTexts.sizeLabel(i.bytes) + " · " + LongTexts.countLabel(i.chars) + " " + tr("characters"),
+                    LongTexts.dateLabel(e) + " · " + i.preview,
+                    onClick = {
+                        if (!LongTexts.share(context, e)) Toast.makeText(context, tr("The file is gone"), Toast.LENGTH_SHORT).show()
+                    },
+                    trailing = {
+                        IconButton(onClick = {
+                            longScope.launch {
+                                withContext(Dispatchers.IO) { LongTexts.forget(context, settings, setOf(e)) }
+                                reload++
+                            }
+                        }) { Icon(Icons.Rounded.DeleteOutline, tr("Delete"), tint = MaterialTheme.colorScheme.error) }
+                    }
+                )
+            }
+            ActionItem(
+                Icons.Rounded.DeleteSweep, "Delete all long texts", tr("Removes {0} files and their cards", files.size),
+                onClick = { confirmAll = true }
+            )
+        }
+        if (confirmAll) AlertDialog(
+            onDismissRequest = { confirmAll = false },
+            title = { Text(tr("Delete all long texts?")) },
+            text = { Text(tr("The files are deleted from your phone. Pinned cards go too.")) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmAll = false
+                    val all = files.toSet()
+                    longScope.launch {
+                        withContext(Dispatchers.IO) { LongTexts.forget(context, settings, all) }
+                        reload++
+                    }
+                }) { Text(tr("Delete all")) }
+            },
+            dismissButton = { TextButton(onClick = { confirmAll = false }) { Text(tr("Cancel")) } }
+        )
+    }
     if (part == SettingsPage.CLIPBOARD) {
         LaunchedEffect(Unit) { ClipCategories.load(context) }
         SettingsSection("Категории буфера") {

@@ -786,12 +786,16 @@ class ComposeKeyboardService : InputMethodService(),
 
     /** Записи старше срока из настройки «Хранить» уходят из истории (закреплённые остаются). */
     private fun expireClips() {
+        cleanLongTexts()
         val old = ClipStore.expired(kb.clipboard, settings).filter { it !in kb.pinnedClips }
         if (old.isEmpty()) return
         kb.clipboard.removeAll(old.toSet())
         old.forEach {
             ClipStore.forget(it)
-            if (it != kb.clipOffer) ClipImages.delete(it)
+            if (it != kb.clipOffer) {
+                ClipImages.delete(it)
+                LongTexts.deleteLater(this, it)
+            }
         }
         ClipStore.save(this, kb.clipboard)
     }
@@ -2796,6 +2800,7 @@ class ComposeKeyboardService : InputMethodService(),
         val keep = kb.pinnedClips.toSet()
         kb.clipboard.filter { it !in keep }.forEach {
             ClipImages.delete(it)
+            LongTexts.deleteLater(this, it)
             ClipStore.forget(it)
         }
         kb.clipboard.retainAll(keep)
@@ -2811,8 +2816,38 @@ class ComposeKeyboardService : InputMethodService(),
         if (kb.clipOffer == text) kb.clipOffer = null
         if (parkedOffer == text) parkedOffer = null
         ClipImages.delete(text)
+        LongTexts.deleteLater(this, text)
         ClipStore.forget(text)
         ClipStore.save(this, kb.clipboard)
+    }
+
+    /** Takes entries out of the history and the pinned list and deletes their long-text files. */
+    private fun dropClipEntries(gone: Collection<String>) {
+        val set = gone.toSet()
+        if (set.isEmpty()) return
+        var pinChanged = false
+        for (e in set) {
+            kb.clipboard.remove(e)
+            if (kb.pinnedClips.remove(e)) pinChanged = true
+            ClipStore.forget(e)
+            LongTexts.deleteLater(this, e)
+            if (kb.clipOffer == e) kb.clipOffer = null
+            if (parkedOffer == e) parkedOffer = null
+        }
+        if (pinChanged) savePinned()
+        ClipStore.save(this, kb.clipboard)
+    }
+
+    /** Long texts the keyboard made: older than the limit, beyond the newest N, or deleted from outside. */
+    private fun cleanLongTexts() {
+        val extra = LongTexts.overflow(kb.clipboard.toList(), kb.pinnedClips.toList(), settings).filter { it != kb.clipOffer }
+        if (extra.isNotEmpty()) dropClipEntries(extra)
+        val known = (kb.clipboard + kb.pinnedClips).filter { LongTexts.isLong(it) }.distinct()
+        if (known.isEmpty()) return
+        serviceScope.launch(Dispatchers.IO) {
+            val gone = LongTexts.missing(this@ComposeKeyboardService, known)
+            if (gone.isNotEmpty()) withContext(Dispatchers.Main.immediate) { dropClipEntries(gone) }
+        }
     }
 
     /** Вставленная запись поднимается наверх — последние использованные всегда под рукой. */
@@ -2835,6 +2870,10 @@ class ComposeKeyboardService : InputMethodService(),
     override fun commitClip(entry: String) {
         bumpClip(entry)
         if (parkedOffer == entry) parkedOffer = null
+        if (LongTexts.isLong(entry)) {
+            pasteLongText(entry)
+            return
+        }
         if (!ClipImages.isImage(entry)) {
             commitPastedText(entry)
             return
@@ -2854,6 +2893,35 @@ class ComposeKeyboardService : InputMethodService(),
             InputConnectionCompat.commitContent(ic, info, content, InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION, null)
         }.getOrDefault(false)
         if (!ok) Toast.makeText(this, tr("Не удалось вставить картинку"), Toast.LENGTH_SHORT).show()
+    }
+
+    /** Tap on a long-text card: pastes the first part of the text (the share button sends the whole file). */
+    private fun pasteLongText(entry: String) {
+        val info = LongTexts.info(entry) ?: return
+        serviceScope.launch {
+            val part = withContext(Dispatchers.IO) { LongTexts.readStart(this@ComposeKeyboardService, entry) }
+            if (part == null) {
+                Toast.makeText(this@ComposeKeyboardService, tr("The file of this long text is gone, so its card was removed"), Toast.LENGTH_LONG).show()
+                dropClipEntries(listOf(entry))
+                return@launch
+            }
+            commitPastedText(part)
+            if (info.chars > part.length) {
+                Toast.makeText(
+                    this@ComposeKeyboardService,
+                    tr("Pasted the first {0} of {1} characters. Use the share button on the card to send the whole file", LongTexts.countLabel(part.length), LongTexts.countLabel(info.chars)),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    override fun shareLongText(entry: String) {
+        HapticsEngine.tick(this, inputView, settings)
+        if (!LongTexts.share(this, entry)) {
+            Toast.makeText(this, tr("The file of this long text is gone, so its card was removed"), Toast.LENGTH_LONG).show()
+            dropClipEntries(listOf(entry))
+        }
     }
 
     override fun pasteClipOffer() {
@@ -3135,7 +3203,7 @@ class ComposeKeyboardService : InputMethodService(),
     }
 
     /** Первая текстовая запись буфера — для шаблонов {clipboard}. */
-    private fun firstTextClip(): String = kb.clipboard.firstOrNull { !ClipImages.isImage(it) }.orEmpty()
+    private fun firstTextClip(): String = kb.clipboard.firstOrNull { !ClipImages.isImage(it) && !LongTexts.isLong(it) }.orEmpty()
 
     private fun addClip(entry: String, stamp: Long) {
         val s = settings
@@ -3146,10 +3214,17 @@ class ComposeKeyboardService : InputMethodService(),
             while (kb.clipboard.size > s.clipboardSize) {
                 val gone = kb.clipboard.removeAt(kb.clipboard.lastIndex)
                 ClipStore.forget(gone)
-                if (gone !in kb.pinnedClips && gone != kb.clipOffer) ClipImages.delete(gone)
+                if (gone !in kb.pinnedClips && gone != kb.clipOffer) {
+                    ClipImages.delete(gone)
+                    LongTexts.deleteLater(this, gone)
+                }
             }
         }
         ClipStore.save(this, kb.clipboard)
+        if (LongTexts.isLong(entry)) {
+            val extra = LongTexts.overflow(kb.clipboard.toList(), kb.pinnedClips.toList(), s).filter { it != entry }
+            if (extra.isNotEmpty()) dropClipEntries(extra)
+        }
         // скопировали только что — предложить вставить (как в Gboard)
         val now = System.currentTimeMillis()
         if (stamp > 0 && now - stamp in 0..CLIP_OFFER_MS && !flags.isPassword) {
@@ -3214,6 +3289,7 @@ class ComposeKeyboardService : InputMethodService(),
         if (flags.isPassword) return
         if (!s.clipboardHistory) {
             if (kb.clipboard.isNotEmpty()) {
+                kb.clipboard.filter { it !in kb.pinnedClips }.forEach { LongTexts.deleteLater(this, it) }
                 kb.clipboard.clear()
                 ClipStore.clear(this)
             }
@@ -3237,6 +3313,19 @@ class ComposeKeyboardService : InputMethodService(),
                 serviceScope.launch {
                     val entry = ClipImages.save(this@ComposeKeyboardService, uri, imageMime, if (stamp > 0) stamp else System.currentTimeMillis())
                     if (entry != null) addClip(entry, stamp)
+                }
+                return
+            }
+            // a very long copy never goes through the history as a string: it is written to a .txt file in the
+            // background and a short entry stands for it (11.2.37)
+            val rawText = item.text
+            if (rawText != null && LongTexts.isTooLong(rawText.length, s)) {
+                lastClipStamp = stamp
+                val at = if (stamp > 0) stamp else System.currentTimeMillis()
+                serviceScope.launch {
+                    val saved = LongTexts.save(this@ComposeKeyboardService, rawText, s.longTextPlace, at)
+                    if (saved != null) addClip(saved, stamp)
+                    else Toast.makeText(this@ComposeKeyboardService, tr("Could not save the long text as a file"), Toast.LENGTH_SHORT).show()
                 }
                 return
             }
@@ -3653,7 +3742,7 @@ class ComposeKeyboardService : InputMethodService(),
         }
     }
 
-    override fun scriptClipboard(): List<String> = (kb.pinnedClips + kb.clipboard).distinct().filter { !ClipImages.isImage(it) }
+    override fun scriptClipboard(): List<String> = (kb.pinnedClips + kb.clipboard).distinct().filter { !ClipImages.isImage(it) && !LongTexts.isLong(it) }
 
     override fun scriptCopy(text: String) {
         runCatching { clipboardManager?.setPrimaryClip(android.content.ClipData.newPlainText("plugin", text)) }

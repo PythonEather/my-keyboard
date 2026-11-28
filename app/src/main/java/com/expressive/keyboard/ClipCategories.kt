@@ -102,7 +102,7 @@ internal object ClipCategories {
 
     private val link = Regex("""^\s*(?:https?://|www\.)\S+\s*$""", RegexOption.IGNORE_CASE)
 
-    fun isLink(entry: String): Boolean = !ClipImages.isImage(entry) && entry.length < 2000 && link.matches(entry)
+    fun isLink(entry: String): Boolean = !ClipImages.isImage(entry) && !LongTexts.isLong(entry) && entry.length < 2000 && link.matches(entry)
 
     fun mask(text: String): String = "•".repeat(text.trim().length.coerceIn(4, 12))
 

@@ -394,6 +394,14 @@ data class KeyboardSettings(
     val clipboardKeep: String = "FOREVER",
     /** Новые скриншоты сами попадают в буфер (нужен доступ к фото). */
     val clipScreenshots: Boolean = true,
+    /** A copy longer than this many characters becomes a .txt file instead of text (0 — off). */
+    val longTextLimit: Int = 50_000,
+    /** Where those files go: DOWNLOADS (Downloads/Expressive Keyboard) | PRIVATE (the app's own folder). */
+    val longTextPlace: String = "DOWNLOADS",
+    /** The keyboard deletes a long text this long after it was last used: 1D | 7D | 30D | NEVER. */
+    val longTextKeep: String = "7D",
+    /** Only the newest N long-text files stay; pinned ones are never deleted. */
+    val longTextMax: Int = 10,
     val soundVolume: Float = 0.6f,
     val giphyKey: String = "",
     /** Свой ключ KLIPY (бесплатный, замена Tenor). */
@@ -816,6 +824,10 @@ object KeyboardPrefs {
             clipboardSize = p.getInt("clipboard_size", 50).let { if (it <= 0) Int.MAX_VALUE else it.coerceIn(5, 5000) },
             clipboardKeep = p.getString("clipboard_keep", "FOREVER") ?: "FOREVER",
             clipScreenshots = p.getBoolean("clip_screenshots", true),
+            longTextLimit = p.getInt("long_text_limit", 50_000).let { if (it <= 0) 0 else it.coerceIn(5_000, 5_000_000) },
+            longTextPlace = p.getString("long_text_place", "DOWNLOADS") ?: "DOWNLOADS",
+            longTextKeep = p.getString("long_text_keep", "7D") ?: "7D",
+            longTextMax = p.getInt("long_text_max", 10).coerceIn(3, 100),
             soundVolume = p.getFloat("sound_volume", 0.6f).coerceIn(0.05f, 1f),
             giphyKey = SecretBox.decrypt(p.getString("giphy_key", "") ?: ""),
             klipyKey = SecretBox.decrypt(p.getString("klipy_key", "") ?: ""),

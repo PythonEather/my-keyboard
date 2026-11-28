@@ -2,6 +2,15 @@
 
 Expressive Keyboard Pro, an independent fork. Each version's full notes are in `release-notes/` and on its GitHub release.
 
+## 11.2.37
+- Fixed: in the button shape and letter popup shape pickers, "Your shape now" was squeezed into a thin column and showed one letter per line. The Surprise me button now has its own full-width row, so the shape name has room again
+- Long copied text no longer freezes or crashes the keyboard. A copy longer than 50,000 characters is saved as a .txt file in Downloads/Expressive Keyboard, and the clipboard shows a small card with its size and first words instead of the text. The limit can be changed or turned off in Settings, Clipboard, Long copied text
+- Tap the card (or the paste suggestion above the keys) to paste the first 5,000 characters. The share button on the card sends the whole file through the Android share sheet
+- You control the files. The X on a card deletes the file too. The new Long copied text section lists every file with its size and date, a delete button on each, and Delete all. Tap a file there to share it
+- The keyboard also cleans up after itself: files are deleted 7 days after you last used them (1 day, 7 days, 30 days or never), and only the newest 10 are kept (3 to 50). Pinned cards are never deleted. It only deletes files it made itself, never your own files. If you delete a file in a file manager, its card disappears the next time the keyboard opens
+- You can also save the files in a private folder that only the keyboard sees. Android 9 and older always use the private folder
+- Nothing is saved in incognito, in password fields, or when the system marks a copy as sensitive, and nothing is saved when the clipboard history is off
+
 ## 11.2.36
 - 70 new button shapes, so there are now over 100: squircle, cookies up to 20 sides, flowers, daisy, clovers, stars, sparkles, shuriken, badges, gears, hexagons and other polygons, plus, cross, drop, leaf, shield, house, kite, trapezoid and 8 blobs
 - The shapes sit in 8 groups (Soft and round, Cookies and suns, Flowers and clovers, Stars and sparkles, Badges and gears, Polygons, Symbols, Blobs). Only one group is open at a time, so the page stays short

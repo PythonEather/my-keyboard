@@ -126,6 +126,9 @@ object ClipStore {
         times.remove(entry)
     }
 
+    /** When the entry was last copied or pasted, if known. */
+    fun timeOf(entry: String): Long? = times[entry]
+
     /** Записи по порядку (новые сверху) без устаревших. */
     fun load(context: Context, s: KeyboardSettings): List<String> = runCatching {
         val f = file(context)
@@ -140,6 +143,7 @@ object ClipStore {
             val at = o.optLong("at", now)
             if (t.isEmpty() || (keep > 0 && now - at > keep)) continue
             if (ClipImages.isImage(t) && !ClipImages.file(t).exists()) continue
+            if (LongTexts.isLong(t) && !LongTexts.exists(context, t)) continue
             times[t] = at
             out += t
         }
