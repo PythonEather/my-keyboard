@@ -40,6 +40,8 @@
 - Typewriter and Clicky sounds, pitch per key, cursor ticks on the space bar, and a typing stats page that stays on the phone
 
 **Look**
+- Mods in **Lua 5.4** (`.lua`, `"scriptEngine": "lua"`) beside JavaScript (Rhino, QuickJS)
+- **3D scenes** for mods: `.obj` / `.glb` models, camera, lights, fog and materials, plus GLSL textures, feedback and instancing
 - Dynamic shadow: key shadows lean away from the tilt of the phone (Settings → Colors and background)
 - Static frosted glass: the background picture is blurred once instead of live, on any Android version
 
@@ -106,7 +108,7 @@ contain `debug` or `unsigned`, and **Publish** (a pre-release is found too; a dr
 - **Layout:** key height and corner radius, spacing, keyboard width, one-handed mode, own keyboard DPI, grouped size settings
 - **Feedback:** adjustable vibration and sound
 - **Privacy:** incognito mode; suggestions and dictionary learning are turned off in password fields
-- **Plugins and mods:** custom buttons, shortcuts, layouts, themes and JavaScript scripts that can draw and animate over the keyboard (including GLSL shaders and 3D), play music, press keys, change layouts on the fly and arrange the Settings screen and the toolbar
+- **Plugins and mods:** custom buttons, shortcuts, layouts, themes and JavaScript or Lua scripts that can draw and animate over the keyboard, including 3D (including GLSL shaders and 3D), play music, press keys, change layouts on the fly and arrange the Settings screen and the toolbar
 
 ## Installation
 

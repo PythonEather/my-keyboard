@@ -10,7 +10,7 @@ A plugin is imported in **Settings → Plugins and mods**, from a file or from t
 
 A mod script gets the `kb` object. It can react to key presses and words, insert and change text,
 add its own panels, buttons, keys and suggestions, store data, use the network, change icons, language and settings,
-**draw and animate anything on top of the keyboard**, find out where each key is, "press" keys, and change the layout
+**draw and animate anything on top of the keyboard** (including OpenGL shaders and lit 3D models), find out where each key is, "press" keys, and change the layout
 and the look on the fly. For example, you can make a character that walks over the keys and types (example below).
 The script runs in a sandbox: it has no access to Java or to other apps' files (each mod has its own folder, `kb.files`);
 anything that touches text, the network, links and AI needs a permission; and every script call has a time limit (300 ms by default, up to 2 s with `callBudgetMs`; loading — 2 s),
@@ -40,6 +40,7 @@ Plugins here are not limited to a few buttons, to Android 13+ shaders or to a 30
 | **GLSL layers** (`type: "gl"`) | Your own OpenGL ES 2.0 / 3.0 fragment **and vertex** shaders, meshes, depth buffer, 1–60 fps, own render thread, feedback (the shader reads the previous frame), instancing, automatic quality when the phone is slow or hot. Full-screen effects and real 3D | **8+** (the app minimum) |
 | **AGSL shaders** (`type: "shader"`, `kb.postEffect`) | Shaders that run on the keyboard's own picture: distortion, refraction, hologram | 13+ only |
 | **GL textures** | Pictures from your `.zip` (or `data:` URIs) as `sampler2D` uniforms: textured 3D, sprites, noise and lookup-table colour effects. Up to 4 per layer, repeat / mirror / nearest / mipmaps | 8+ |
+| **3D scenes** (`scene` in a `gl` layer) | The built-in 3D engine: `.obj` and `.glb`/`.gltf` models, camera, sun and point lights, fog, materials and textures, shared depth with your shader. No shader code needed. `kb.scene(id, patch)` moves the camera and objects cheaply | 8+ |
 | **GL batches** | Hundreds of rects, circles and lines in one draw call | 8+ |
 | **Retained groups, pan and zoom** | Send a big scene once, move the camera inside the keyboard with no script round trip | 8+ |
 | **Particles and liquid** | Up to 20,000 particles, up to 3,000 liquid ones, driven by the keyboard, not the script | 8+ |
@@ -57,7 +58,7 @@ Three things people often get wrong:
   keyboard, so a mod only sets parameters and the budget is almost never the limit.
 - **"It is the same as the official keyboard."** This is an independent fork with its own releases. It started from the original and adds
   landscape full screen for mods, retained groups, host-side pan/zoom, GL batches, a faster GL layer, dynamic shadow, static frosted glass,
-  the `media`, `settings_layout` and `toolbar_layout` permissions, installing plugins from a link, music of up to 256 MB in a `.zip` and the security notice (the README has the full list).
+  Lua 5.4 mods, the built-in 3D scene engine, GL textures and feedback, the `media`, `settings_layout` and `toolbar_layout` permissions, installing plugins from a link, music of up to 256 MB in a `.zip` and the security notice (the README has the full list).
 
 ## Common fields
 
